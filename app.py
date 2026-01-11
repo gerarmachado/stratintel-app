@@ -13,12 +13,48 @@ import os
 import time
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="StratIntel OSINT V8.1 (Fixed)", page_icon="🕵️‍♂️", layout="wide")
+st.set_page_config(page_title="StratIntel OSINT V9.0 (Secure)", page_icon="🔐", layout="wide")
+
+# ==========================================
+# 🔐 SISTEMA DE LOGIN (NUEVO)
+# ==========================================
+def check_password():
+    """Retorna `True` si el usuario tiene la contraseña correcta."""
+
+    def password_entered():
+        """Verifica si la contraseña ingresada coincide con los secretos."""
+        if st.session_state["username"] in st.secrets["passwords"] and \
+           st.session_state["password"] == st.secrets["passwords"][st.session_state["username"]]:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # No guardar contraseña en memoria
+        else:
+            st.session_state["password_correct"] = False
+
+    # Si ya está validado, retornar True
+    if st.session_state.get("password_correct", False):
+        return True
+
+    # Interfaz de Login
+    st.markdown("## 🔒 Acceso Restringido")
+    st.text_input("Usuario", key="username")
+    st.text_input("Contraseña", type="password", on_change=password_entered, key="password")
+    
+    if "password_correct" in st.session_state and not st.session_state["password_correct"]:
+        st.error("❌ Usuario o contraseña incorrectos")
+
+    return False
+
+if not check_password():
+    st.stop()  # 🛑 AQUÍ SE DETIENE TODO SI NO HAY LOGIN
 
 # ==========================================
 # ⚙️ CONFIGURACIÓN CENTRAL
 # ==========================================
+# Intentamos leer API KEY de secrets primero (Nube), luego local
 API_KEY_FIJA = "" 
+if "GOOGLE_API_KEY" in st.secrets:
+    API_KEY_FIJA = st.secrets["GOOGLE_API_KEY"]
+
 MODELO_ACTUAL = "gemini-3-flash-preview"  
 # ==========================================
 
@@ -160,7 +196,7 @@ def limpiar_texto_pdf(texto):
     """
     if not texto: return ""
     
-    # FORMATO VERTICAL SEGURO (Para evitar errores de sintaxis al copiar)
+    # FORMATO VERTICAL SEGURO
     reemplazos = {
         "✨": "", 
         "🚀": "", 
@@ -239,30 +275,23 @@ def crear_word(texto, tecnica, fuente):
 
 # --- INTERFAZ DE USUARIO ---
 
-st.sidebar.title("🌐 StratIntel OSINT V8.1")
+st.sidebar.title("🌐 StratIntel OSINT V9.0")
+st.sidebar.markdown(f"**Motor:** {MODELO_ACTUAL}")
 st.sidebar.markdown("---")
 
-# LÓGICA DE CONEXIÓN
-api_key_usar = ""
-if API_KEY_FIJA and "API_KEY" not in API_KEY_FIJA: 
-    api_key_usar = API_KEY_FIJA
+# LÓGICA DE CONEXIÓN (Ya autenticado por el login arriba)
+if API_KEY_FIJA:
+    st.session_state['api_key'] = API_KEY_FIJA
+    genai.configure(api_key=API_KEY_FIJA)
+    st.sidebar.success(f"✅ Conectado y Autenticado")
 else:
-    try:
-        if "GOOGLE_API_KEY" in st.secrets:
-            api_key_usar = st.secrets["GOOGLE_API_KEY"]
-    except: pass
-
-if api_key_usar:
-    st.session_state['api_key'] = api_key_usar
-    genai.configure(api_key=api_key_usar)
-    st.sidebar.success(f"✅ Conectado ({MODELO_ACTUAL})")
-
-if not st.session_state['api_key']:
-    api_input = st.sidebar.text_input("🔑 Ingresa tu API KEY:", type="password")
-    if api_input:
-        st.session_state['api_key'] = api_input
-        genai.configure(api_key=api_input)
-        st.rerun()
+    # Si no hay clave en secrets, pedir manual (por si acaso)
+    if not st.session_state['api_key']:
+        api_input = st.sidebar.text_input("🔑 API KEY (Admin):", type="password")
+        if api_input:
+            st.session_state['api_key'] = api_input
+            genai.configure(api_key=api_input)
+            st.rerun()
 
 st.sidebar.markdown("---")
 tecnica_seleccionada = st.sidebar.selectbox("1. Marco Metodológico:", list(DB_CONOCIMIENTO.keys()))
@@ -272,7 +301,13 @@ if DB_CONOCIMIENTO.get(tecnica_seleccionada):
     if desc: st.sidebar.info(desc)
 
 temperatura = st.sidebar.slider("Creatividad", 0.0, 1.0, 0.3)
-st.title(f"Sistema de Análisis de Información ({MODELO_ACTUAL})")
+
+# Botón de Cerrar Sesión
+if st.sidebar.button("🔒 Cerrar Sesión"):
+    del st.session_state["password_correct"]
+    st.rerun()
+
+st.title(f"Sistema de Inteligencia Híbrida")
 
 # TABS
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["📄 PDF", "📝 DOCX", "🔗 Web Scraper", "📺 YouTube (AI)", "✍️ Manual"])
