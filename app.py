@@ -22,6 +22,8 @@ def check_password():
     """Retorna `True` si el usuario tiene la contraseña correcta."""
 
     def password_entered():
+        st.write(f"Usuario escrito: '{st.session_state['username']}'")
+        st.write(f"Usuarios permitidos: {st.secrets['passwords']}")
         """Verifica si la contraseña ingresada coincide con los secretos."""
         if st.session_state["username"] in st.secrets["passwords"] and \
            st.session_state["password"] == st.secrets["passwords"][st.session_state["username"]]:
@@ -440,3 +442,4 @@ if 'resultado_reciente' in st.session_state and st.session_state['resultado_reci
         col_d2.download_button("Descargar PDF", bytes(pdf_bytes), "Informe.pdf", "application/pdf")
     except Exception as e:
         col_d2.error(f"Error PDF: {e}")
+
