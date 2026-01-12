@@ -4,8 +4,6 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 import pypdf
 from docx import Document
 from fpdf import FPDF
-from pptx import Presentation 
-from pptx.util import Inches, Pt
 from io import BytesIO
 import requests
 from bs4 import BeautifulSoup
@@ -17,7 +15,7 @@ import datetime
 from langchain_community.tools import DuckDuckGoSearchRun
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="StratIntel V13 (Grand Strategy)", page_icon="♟️", layout="wide")
+st.set_page_config(page_title="StratIntel V14 (Stable)", page_icon=⚖️", layout="wide")
 
 # ==========================================
 # 🔐 SISTEMA DE LOGIN
@@ -34,7 +32,7 @@ def check_password():
     if st.session_state.get("password_correct", False):
         return True
 
-    st.markdown("## ♟️ StratIntel: Acceso Restringido")
+    st.markdown("## ⚖️ StratIntel: Acceso Restringido")
     st.text_input("Usuario", key="username")
     st.text_input("Contraseña", type="password", on_change=password_entered, key="password")
     
@@ -46,12 +44,13 @@ if not check_password():
     st.stop()
 
 # ==========================================
-# ⚙️ CONFIGURACIÓN Y MODELO
+# ⚙️ CONFIGURACIÓN Y MODELO (ESTABLE)
 # ==========================================
 API_KEY_FIJA = "" 
 if "GOOGLE_API_KEY" in st.secrets:
     API_KEY_FIJA = st.secrets["GOOGLE_API_KEY"]
 
+# MODELO ESTABLE PARA EVITAR ERROR 429
 MODELO_ACTUAL = "gemini-2.5-flash"  
 
 # ==========================================
@@ -180,34 +179,14 @@ def procesar_youtube(url, api_key):
 # --- FUNCIONES DE REPORTE ---
 def limpiar_texto(t):
     if not t: return ""
-    reps = {"✨": "", "🚀": "", "⚠️": "[!]", "✅": "[OK]", "🛡️": "", "🔒": "", "🎖️": "", "♟️": ""}
+    reps = {"✨": "", "🚀": "", "⚠️": "[!]", "✅": "[OK]", "🛡️": "", "🔒": "", "🎖️": "", "♟️": "", "⚖️": ""}
     for k,v in reps.items(): t = t.replace(k,v)
     return t.encode('latin-1', 'replace').decode('latin-1')
-
-def crear_pptx(texto, tecnicas, fuente):
-    prs = Presentation()
-    slide = prs.slides.add_slide(prs.slide_layouts[0])
-    slide.shapes.title.text = "Informe de Inteligencia V13"
-    slide.placeholders[1].text = f"Fuente: {fuente}\nGenerado por IA"
-
-    secciones = texto.split("## 📌")
-    for seccion in secciones:
-        if not seccion.strip(): continue
-        lineas = seccion.strip().split("\n")
-        titulo = lineas[0].strip()
-        contenido = "\n".join(lineas[1:])[:1500] 
-        
-        slide = prs.slides.add_slide(prs.slide_layouts[1])
-        slide.shapes.title.text = titulo
-        slide.shapes.placeholders[1].text_frame.text = contenido
-
-    b = BytesIO(); prs.save(b); b.seek(0)
-    return b
 
 class PDFReport(FPDF):
     def header(self):
         self.set_font('Arial', 'B', 12)
-        self.cell(0, 10, 'StratIntel Report V13', 0, 1, 'C')
+        self.cell(0, 10, 'StratIntel Report V14', 0, 1, 'C')
         self.ln(5)
     def footer(self):
         self.set_y(-15)
@@ -226,7 +205,7 @@ def crear_pdf(texto, tecnicas, fuente):
 
 def crear_word(texto, tecnicas, fuente):
     doc = Document()
-    doc.add_heading('StratIntel Intelligence Report V13', 0)
+    doc.add_heading('StratIntel Intelligence Report V14', 0)
     doc.add_paragraph(f"Fuente: {fuente}").bold = True
     doc.add_paragraph(f"Técnicas: {tecnicas}").bold = True
     for l in texto.split('\n'):
@@ -234,19 +213,19 @@ def crear_word(texto, tecnicas, fuente):
         else: doc.add_paragraph(l)
     
     aviso = doc.add_paragraph()
-    aviso.add_run("\n\n------------------\nAVISO: Generado por IA. Verificar datos.").font.size = Pt(8)
+    aviso.add_run("\n\n------------------\nAVISO: Generado por IA. Verificar datos.").font.size = 8
     b = BytesIO(); doc.save(b); b.seek(0)
     return b
 
 # --- INTERFAZ ---
-st.sidebar.title("♟️ StratIntel V13")
-st.sidebar.caption("Grand Strategy Edition")
+st.sidebar.title("⚖️ StratIntel V14")
+st.sidebar.caption("Stable Edition | Multi-Select")
 st.sidebar.markdown("---")
 
 if API_KEY_FIJA:
     st.session_state['api_key'] = API_KEY_FIJA
     genai.configure(api_key=API_KEY_FIJA)
-    st.sidebar.success(f"✅ Conectado")
+    st.sidebar.success(f"✅ Conectado ({MODELO_ACTUAL})")
 else:
     if not st.session_state['api_key']:
         k = st.sidebar.text_input("🔑 API KEY:", type="password")
@@ -263,8 +242,8 @@ tecnicas_seleccionadas = st.sidebar.multiselect(
 temp = st.sidebar.slider("Creatividad", 0.0, 1.0, 0.4)
 if st.sidebar.button("🔒 Salir"): del st.session_state["password_correct"]; st.rerun()
 
-st.title("♟️ StratIntel | División de Análisis")
-st.markdown("**Sistema de Apoyo a la Decisión (DSS) v13.0**")
+st.title("⚖️ StratIntel | División de Análisis")
+st.markdown("**Sistema de Apoyo a la Decisión (DSS) v14.0**")
 
 # CARGA
 t1, t2, t3, t4, t5 = st.tabs(["📂 PDFs", "📝 DOCXs", "🌐 Web", "📺 YouTube", "✍️ Manual"])
@@ -304,11 +283,10 @@ else:
     with c1:
         if not tecnicas_seleccionadas: st.info("👈 Selecciona técnicas.")
         
-        # --- NUEVO: SELECTOR DE PROFUNDIDAD ---
         profundidad = st.radio(
             "Nivel de Profundidad:", 
-            ["🔍 Estratégico (Resumen General)", "🎯 Táctico (Responder TODAS las preguntas predefinidas)"],
-            help="Estratégico: Análisis libre de la técnica. Táctico: Obliga a la IA a responder la lista de preguntas de la base de datos."
+            ["🔍 Estratégico (Resumen General)", "🎯 Táctico (Responder TODAS las preguntas)"],
+            help="Estratégico: Análisis libre. Táctico: Responde una a una las preguntas del marco."
         )
         
         usar_internet = st.checkbox("🌐 Búsqueda Web")
@@ -331,21 +309,20 @@ else:
                         s.update(label="✅ Hecho", state="complete", expanded=False)
                 
                 # BUCLE DE ANÁLISIS
-                informe_final = f"# INFORME V13\nFECHA: {datetime.datetime.now().strftime('%d/%m/%Y')}\nFUENTE: {st.session_state['origen_dato']}\n\n"
+                informe_final = f"# INFORME V14\nFECHA: {datetime.datetime.now().strftime('%d/%m/%Y')}\nFUENTE: {st.session_state['origen_dato']}\n\n"
                 progreso = st.progress(0)
                 
                 for i, tec in enumerate(tecnicas_seleccionadas):
                     st.caption(f"Analizando: {tec}...")
                     
-                    # --- LÓGICA DE INYECCIÓN DE PREGUNTAS (AQUÍ ESTÁ LA MAGIA) ---
+                    # LÓGICA DE PREGUNTAS
                     preguntas_base = DB_CONOCIMIENTO.get(tec, {}).get("preguntas", [])
-                    
                     instruccion_preguntas = ""
                     if "Táctico" in profundidad and preguntas_base:
                         lista_formateada = "\n".join([f"- {p}" for p in preguntas_base])
-                        instruccion_preguntas = f"\n\nOBLIGATORIO: Debes responder DETALLADAMENTE a cada una de las siguientes preguntas propias de esta metodología:\n{lista_formateada}"
+                        instruccion_preguntas = f"\n\nOBLIGATORIO: Responde DETALLADAMENTE a:\n{lista_formateada}"
                     else:
-                        instruccion_preguntas = "\n\nINSTRUCCIÓN: Realiza un análisis general profundo aplicando los principios de esta metodología."
+                        instruccion_preguntas = "\n\nINSTRUCCIÓN: Análisis general profundo."
 
                     prompt = f"""
                     ACTÚA COMO: Analista de Inteligencia Senior.
@@ -361,10 +338,25 @@ else:
                     FORMATO: Académico, riguroso, citar fuentes.
                     """
                     
-                    res = model.generate_content(prompt, generation_config=genai.types.GenerationConfig(temperature=temp))
-                    informe_final += f"\n\n## 📌 {tec}\n{res.text}\n\n---\n"
+                    # RETRY LOGIC (Anti-429)
+                    intentos = 0
+                    exito = False
+                    while intentos < 3 and not exito:
+                        try:
+                            res = model.generate_content(prompt, generation_config=genai.types.GenerationConfig(temperature=temp))
+                            informe_final += f"\n\n## 📌 {tec}\n{res.text}\n\n---\n"
+                            exito = True
+                        except Exception as e:
+                            if "429" in str(e):
+                                st.warning(f"⚠️ Tráfico alto (429). Esperando 30s... (Intento {intentos+1})")
+                                time.sleep(30)
+                                intentos += 1
+                            else:
+                                st.error(f"Error: {e}")
+                                break
+
                     progreso.progress((i + 1) / len(tecnicas_seleccionadas))
-                    time.sleep(2)
+                    time.sleep(5) # Pausa de cortesía
                 
                 st.session_state['res'] = informe_final
                 st.session_state['tecnicas_usadas'] = ", ".join(tecnicas_seleccionadas)
@@ -375,11 +367,7 @@ else:
 
 if 'res' in st.session_state:
     st.markdown("---")
-    c1, c2, c3 = st.columns(3)
-    c1.download_button("Word", crear_word(st.session_state['res'], st.session_state['tecnicas_usadas'], st.session_state['origen_dato']), "Reporte.docx")
-    try: c2.download_button("PDF", bytes(crear_pdf(st.session_state['res'], st.session_state['tecnicas_usadas'], st.session_state['origen_dato'])), "Reporte.pdf")
+    c1, c2 = st.columns(2)
+    c1.download_button("Descargar Word", crear_word(st.session_state['res'], st.session_state['tecnicas_usadas'], st.session_state['origen_dato']), "Reporte.docx")
+    try: c2.download_button("Descargar PDF", bytes(crear_pdf(st.session_state['res'], st.session_state['tecnicas_usadas'], st.session_state['origen_dato'])), "Reporte.pdf")
     except: pass
-    try: c3.download_button("PowerPoint", crear_pptx(st.session_state['res'], st.session_state['tecnicas_usadas'], st.session_state['origen_dato']), "Slides.pptx")
-    except: pass
-
-
