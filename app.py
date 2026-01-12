@@ -15,7 +15,7 @@ import datetime
 from langchain_community.tools import DuckDuckGoSearchRun
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="StratIntel V1 (Stable)", page_icon="⚖️", layout="wide")
+st.set_page_config(page_title="StratIntel V1 (Stable)", page_icon="🛡️", layout="wide")
 
 # ==========================================
 # 🔐 SISTEMA DE LOGIN
@@ -186,7 +186,7 @@ def limpiar_texto(t):
 class PDFReport(FPDF):
     def header(self):
         self.set_font('Arial', 'B', 12)
-        self.cell(0, 10, 'StratIntel Report V14', 0, 1, 'C')
+        self.cell(0, 10, 'StratIntel Report', 0, 1, 'C')
         self.ln(5)
     def footer(self):
         self.set_y(-15)
@@ -205,7 +205,7 @@ def crear_pdf(texto, tecnicas, fuente):
 
 def crear_word(texto, tecnicas, fuente):
     doc = Document()
-    doc.add_heading('StratIntel Intelligence Report V14', 0)
+    doc.add_heading('StratIntel Intelligence Report', 0)
     doc.add_paragraph(f"Fuente: {fuente}").bold = True
     doc.add_paragraph(f"Técnicas: {tecnicas}").bold = True
     for l in texto.split('\n'):
@@ -218,7 +218,7 @@ def crear_word(texto, tecnicas, fuente):
     return b
 
 # --- INTERFAZ ---
-st.sidebar.title("⚖️ StratIntel V14")
+st.sidebar.title("🛡️ StratIntel V1")
 st.sidebar.caption("Stable Edition | Multi-Select")
 st.sidebar.markdown("---")
 
@@ -243,7 +243,7 @@ temp = st.sidebar.slider("Creatividad", 0.0, 1.0, 0.4)
 if st.sidebar.button("🔒 Salir"): del st.session_state["password_correct"]; st.rerun()
 
 st.title("⚖️ StratIntel | División de Análisis")
-st.markdown("**Sistema de Apoyo a la Decisión (DSS) v14.0**")
+st.markdown("**Sistema de Apoyo a la Decisión (DSS) v1**")
 
 # CARGA
 t1, t2, t3, t4, t5 = st.tabs(["📂 PDFs", "📝 DOCXs", "🌐 Web", "📺 YouTube", "✍️ Manual"])
@@ -371,4 +371,3 @@ if 'res' in st.session_state:
     c1.download_button("Descargar Word", crear_word(st.session_state['res'], st.session_state['tecnicas_usadas'], st.session_state['origen_dato']), "Reporte.docx")
     try: c2.download_button("Descargar PDF", bytes(crear_pdf(st.session_state['res'], st.session_state['tecnicas_usadas'], st.session_state['origen_dato'])), "Reporte.pdf")
     except: pass
-
