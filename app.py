@@ -387,7 +387,7 @@ def crear_pdf(texto, tecnicas, fuente):
 
 def crear_word(texto, tecnicas, fuente):
     doc = Document()
-    doc.add_heading('StratIntel Intelligence Report V16', 0)
+    doc.add_heading('StratIntel Intelligence Report', 0)
     doc.add_paragraph(f"Fuente: {fuente}").bold = True
     doc.add_paragraph(f"Técnicas: {tecnicas}").bold = True
     for l in texto.split('\n'):
@@ -400,7 +400,7 @@ def crear_word(texto, tecnicas, fuente):
     return b
 
 # --- INTERFAZ ---
-st.sidebar.title("♟️ StratIntel V16")
+st.sidebar.title("♟️ StratIntel")
 st.sidebar.caption("Master Edition | Ops Mode")
 st.sidebar.markdown("---")
 
@@ -425,7 +425,7 @@ temp = st.sidebar.slider("Creatividad", 0.0, 1.0, 0.4)
 if st.sidebar.button("🔒 Salir"): del st.session_state["password_correct"]; st.rerun()
 
 st.title("♟️ StratIntel | División de Análisis")
-st.markdown("**Sistema de Apoyo a la Decisión (DSS) v16.2**")
+st.markdown("**Sistema de Apoyo a la Decisión (DSS)**")
 
 # CARGA
 t1, t2, t3, t4, t5 = st.tabs(["📂 PDFs", "📝 DOCXs", "🌐 Web", "📺 YouTube", "✍️ Manual"])
@@ -456,7 +456,7 @@ if st.session_state['texto_analisis']:
     with st.expander(f"Fuente Activa: {st.session_state['origen_dato']}"): st.write(st.session_state['texto_analisis'][:1000])
 
 # EJECUCIÓN
-st.header("Generación de Inteligencia")
+st.header("Generación de Informe")
 
 if not st.session_state['api_key'] or not st.session_state['texto_analisis']:
     st.warning("⚠️ Carga datos para comenzar.")
@@ -505,7 +505,7 @@ else:
                         s.update(label="✅ Hecho", state="complete", expanded=False)
                 
                 # BUCLE DE ANÁLISIS
-                informe_final = f"# INFORME V16.2\nFECHA: {datetime.datetime.now().strftime('%d/%m/%Y')}\nFUENTE: {st.session_state['origen_dato']}\n\n"
+                informe_final = f"# INFORME\nFECHA: {datetime.datetime.now().strftime('%d/%m/%Y')}\nFUENTE: {st.session_state['origen_dato']}\n\n"
                 progreso = st.progress(0)
                 
                 for i, tec in enumerate(tecnicas_seleccionadas):
@@ -580,4 +580,5 @@ if 'res' in st.session_state:
     c1.download_button("Descargar Word", crear_word(st.session_state['res'], st.session_state['tecnicas_usadas'], st.session_state['origen_dato']), "Reporte.docx")
     try: c2.download_button("Descargar PDF", bytes(crear_pdf(st.session_state['res'], st.session_state['tecnicas_usadas'], st.session_state['origen_dato'])), "Reporte.pdf")
     except: pass
+
 
