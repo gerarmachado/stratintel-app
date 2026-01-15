@@ -9,9 +9,3 @@ StratIntel es una herramienta avanzada de **Vertical AI** diseñada para analist
 - **OSINT Híbrido:** Agente de búsqueda web en tiempo real integrado.
 - **Multifuente:** Procesa PDF, DOCX, Noticias Web y Videos de YouTube.
 
-## 🛠️ Instalación
-
-1. Clona este repositorio.
-2. Instala las dependencias:
-   ```bash
-   pip install -r requirements.txt
