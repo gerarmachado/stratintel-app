@@ -425,7 +425,7 @@ temp = st.sidebar.slider("Creatividad", 0.0, 1.0, 0.4)
 if st.sidebar.button("🔒 Salir"): del st.session_state["password_correct"]; st.rerun()
 
 st.title("♟️ StratIntel | División de Análisis")
-st.markdown("**Sistema de Apoyo a la Decisión (DSS)**")
+st.markdown("**Sistema de Inteligencia Estratégica (DSS)**")
 
 # CARGA
 t1, t2, t3, t4, t5 = st.tabs(["📂 PDFs", "📝 DOCXs", "🌐 Web", "📺 YouTube", "✍️ Manual"])
@@ -580,5 +580,6 @@ if 'res' in st.session_state:
     c1.download_button("Descargar Word", crear_word(st.session_state['res'], st.session_state['tecnicas_usadas'], st.session_state['origen_dato']), "Reporte.docx")
     try: c2.download_button("Descargar PDF", bytes(crear_pdf(st.session_state['res'], st.session_state['tecnicas_usadas'], st.session_state['origen_dato'])), "Reporte.pdf")
     except: pass
+
 
 
