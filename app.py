@@ -218,6 +218,39 @@ DB_CONOCIMIENTO = {
     },
 
     # -------------------------------------------------------------------------
+    # 🌪️ TEORÍA DE LA COMPLEJIDAD Y CAOS (DETECTAR LO INVISIBLE)
+    # -------------------------------------------------------------------------
+    "--- COMPLEJIDAD Y SEÑALES DÉBILES ---": { "desc": "", "preguntas": [] },
+
+    "Análisis de Señales Débiles (Weak Signals)": {
+        "desc": "Detección temprana del 'Efecto Mariposa' y anomalías marginales.",
+        "preguntas": [
+            "Detección de Ruido: Identifica datos, eventos o anécdotas marginales que los expertos están descartando como 'irrelevantes'.",
+            "Patrón de Rareza: ¿Existe algún evento extraño que haya ocurrido más de una vez en contextos diferentes (coincidencia sospechosa)?",
+            "Filtro de Amplificación: Si esta pequeña señal marginal creciera exponencialmente, ¿qué sistema colapsaría primero?",
+            "Voz Disidente: Busca en el texto la opinión más impopular o ridícula y analízala como si fuera la única verdad."
+        ]
+    },
+    "Ventana de Johari (Unknown Unknowns)": {
+        "desc": "Exploración de puntos ciegos y vacíos ontológicos.",
+        "preguntas": [
+            "Unknown Unknowns (Desconocidos-Desconocidos): ¿Qué es lo que NI SIQUIERA sabemos que no sabemos sobre este tema?",
+            "El Elefante en la Habitación: ¿Qué tema obvio está siendo sistemáticamente evitado u omitido en la información disponible?",
+            "Sesgo de Espejo: ¿Estamos asumiendo que el adversario piensa como nosotros? Rompe esa asunción.",
+            "Hipótesis Silenciosa: Genera una hipótesis basada en la ausencia de evidencia (lo que NO está pasando)."
+        ]
+    },
+    "Análisis de Redes Ocultas (Rizoma)": {
+        "desc": "Conexiones no lineales entre eventos dispares.",
+        "preguntas": [
+            "Mapeo de Vínculos Invisibles: Encuentra una conexión lógica entre dos eventos del texto que parezcan no tener relación alguna.",
+            "Nodos Ocultos: ¿Existe un tercer actor o factor (no mencionado) que podría estar moviendo los hilos de ambos bandos?",
+            "Efecto de Segundo y Tercer Orden: Si ocurre el evento principal, ¿qué efecto dominó inesperado ocurrirá en un sector ajeno (ej. impacto de una guerra en la moda o el clima)?",
+            "Análisis de Casualidad: Convierte una 'casualidad' mencionada en el texto en una causalidad intencional. ¿Cómo cambia la historia?"
+        ]
+    },
+    
+    # -------------------------------------------------------------------------
     # 🛠️ TÉCNICAS ESTRUCTURADAS (SATs)
     # -------------------------------------------------------------------------
     "--- TÉCNICAS ESTRUCTURADAS (SATs) ---": { "desc": "", "preguntas": [] },
@@ -580,6 +613,7 @@ if 'res' in st.session_state:
     c1.download_button("Descargar Word", crear_word(st.session_state['res'], st.session_state['tecnicas_usadas'], st.session_state['origen_dato']), "Reporte.docx")
     try: c2.download_button("Descargar PDF", bytes(crear_pdf(st.session_state['res'], st.session_state['tecnicas_usadas'], st.session_state['origen_dato'])), "Reporte.pdf")
     except: pass
+
 
 
 
