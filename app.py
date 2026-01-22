@@ -5,17 +5,12 @@ import pypdf
 from docx import Document
 from fpdf import FPDF
 from io import BytesIO
-import requests
-from bs4 import BeautifulSoup
-from youtube_transcript_api import YouTubeTranscriptApi
-import yt_dlp
 import os
 import time
 import datetime
-from langchain_community.tools import DuckDuckGoSearchRun
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="StratIntel (Master)", page_icon="♟️", layout="wide")
+st.set_page_config(page_title="StratIntel Beta", page_icon="♟️", layout="wide")
 
 # ==========================================
 # 🔐 SISTEMA DE LOGIN
@@ -334,12 +329,6 @@ if 'texto_analisis' not in st.session_state: st.session_state['texto_analisis'] 
 if 'origen_dato' not in st.session_state: st.session_state['origen_dato'] = "Ninguno"
 
 # --- FUNCIONES DE PROCESAMIENTO ---
-def buscar_en_web(query):
-    try:
-        search = DuckDuckGoSearchRun()
-        return search.run(query)
-    except Exception as e: return f"Error web: {e}"
-
 def procesar_archivos_pdf(archivos):
     texto_total = ""
     nombres = []
@@ -359,37 +348,6 @@ def procesar_archivos_docx(archivos):
         texto_total += f"\n--- ARCHIVO: {archivo.name} ---\n{texto_doc}\n"
         nombres.append(archivo.name)
     return texto_total, str(nombres)
-
-def obtener_texto_web(url):
-    try:
-        h = {'User-Agent': 'Mozilla/5.0'}
-        r = requests.get(url, headers=h, timeout=15)
-        s = BeautifulSoup(r.content, 'html.parser')
-        for script in s(["script", "style"]): script.extract()
-        return s.get_text(separator='\n')
-    except Exception as e: return f"Error: {e}"
-
-def procesar_youtube(url, api_key):
-    vid = url.split("v=")[-1].split("&")[0] if "v=" in url else url.split("/")[-1]
-    try:
-        t = YouTubeTranscriptApi.get_transcript(vid, languages=['es', 'en'])
-        return " ".join([i['text'] for i in t]), "Subtítulos"
-    except:
-        st.info(f"Multimodal (Audio)...")
-        opts = {'format': 'bestaudio/best', 'outtmpl': '%(id)s.%(ext)s', 'postprocessors': [{'key': 'FFmpegExtractAudio','preferredcodec': 'mp3'}], 'quiet': True}
-        try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                fname = f"{info['id']}.mp3"
-            genai.configure(api_key=api_key)
-            myfile = genai.upload_file(fname)
-            while myfile.state.name == "PROCESSING": time.sleep(2); myfile = genai.get_file(myfile.name)
-            model = genai.GenerativeModel(MODELO_ACTUAL)
-            res = model.generate_content([myfile, "Transcribe el audio."])
-            if os.path.exists(fname): os.remove(fname)
-            myfile.delete()
-            return res.text, "Audio IA"
-        except Exception as e: return f"Error: {e}", "Error"
 
 # --- FUNCIONES DE REPORTE ---
 def limpiar_texto(t):
@@ -461,7 +419,7 @@ st.title("♟️ StratIntel | División de Análisis")
 st.markdown("**Sistema de Inteligencia Estratégica (DSS)**")
 
 # CARGA
-t1, t2, t3, t4, t5 = st.tabs(["📂 PDFs", "📝 DOCXs", "🌐 Web", "📺 YouTube", "✍️ Manual"])
+t1, t2, t3, = st.tabs(["📂 PDFs", "📝 DOCXs", "✍️ Manual"])
 with t1:
     f = st.file_uploader("PDFs", type="pdf", accept_multiple_files=True)
     if f and st.button("Procesar PDF"):
@@ -471,16 +429,6 @@ with t2:
     if f and st.button("Procesar DOCX"):
         t, n = procesar_archivos_docx(f); st.session_state['texto_analisis']=t; st.session_state['origen_dato']=f"DOCXs: {n}"; st.success(f"✅ {len(f)}")
 with t3:
-    u = st.text_input("URL"); 
-    if st.button("Web"): st.session_state['texto_analisis']=obtener_texto_web(u); st.session_state['origen_dato']=f"Web: {u}"; st.success("OK")
-with t4:
-    y = st.text_input("YouTube")
-    if st.button("Video"):
-        with st.spinner("..."):
-            t,m=procesar_youtube(y,st.session_state['api_key'])
-            if m!="Error": st.session_state['texto_analisis']=t; st.session_state['origen_dato']=f"YT: {y}"; st.success("OK")
-            else: st.error(t)
-with t5:
     m = st.text_area("Manual")
     if st.button("Fijar"): st.session_state['texto_analisis']=m; st.session_state['origen_dato']="Manual"; st.success("OK")
 
@@ -518,7 +466,6 @@ else:
                 else:
                     st.warning(f"{tec} no tiene preguntas predefinidas.")
         
-        usar_internet = st.checkbox("🌐 Búsqueda Web")
         pir = st.text_area("PIR (Opcional):", height=100)
 
     with c2:
@@ -527,16 +474,7 @@ else:
                 genai.configure(api_key=st.session_state['api_key'])
                 model = genai.GenerativeModel(MODELO_ACTUAL)
                 ctx = st.session_state['texto_analisis']
-                
-                # BÚSQUEDA WEB
-                contexto_web = ""
-                if usar_internet:
-                    with st.status("🌐 Buscando...", expanded=True) as s:
-                        q = f"{pir} {st.session_state['origen_dato']}" if pir else f"Análisis {st.session_state['origen_dato']}"
-                        res_web = buscar_en_web(q)
-                        contexto_web = f"\nINFO WEB:\n{res_web}\n"
-                        s.update(label="✅ Hecho", state="complete", expanded=False)
-                
+                         
                 # BUCLE DE ANÁLISIS
                 informe_final = f"# INFORME\nFECHA: {datetime.datetime.now().strftime('%d/%m/%Y')}\nFUENTE: {st.session_state['origen_dato']}\n\n"
                 progreso = st.progress(0)
@@ -575,8 +513,7 @@ else:
                     
                     CONTEXTO DOCUMENTAL:
                     {ctx}
-                    {contexto_web}
-                    
+                                        
                     FORMATO: Académico, riguroso, citar fuentes del texto.
                     """
                     
@@ -613,6 +550,7 @@ if 'res' in st.session_state:
     c1.download_button("Descargar Word", crear_word(st.session_state['res'], st.session_state['tecnicas_usadas'], st.session_state['origen_dato']), "Reporte.docx")
     try: c2.download_button("Descargar PDF", bytes(crear_pdf(st.session_state['res'], st.session_state['tecnicas_usadas'], st.session_state['origen_dato'])), "Reporte.pdf")
     except: pass
+
 
 
 
