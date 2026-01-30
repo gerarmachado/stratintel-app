@@ -1,16 +1,19 @@
 import streamlit as st
-import google.generativeai as genai
-from langchain_google_genai import ChatGoogleGenerativeAI
+from groq import Groq  # <--- NUEVO MOTOR
 import pypdf
 from docx import Document
 from fpdf import FPDF
 from io import BytesIO
+import requests
+from bs4 import BeautifulSoup
 import os
 import time
 import datetime
+from langchain_community.tools import DuckDuckGoSearchRun
+import graphviz
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="StratIntel Solutions (Beta)", page_icon="♟️", layout="wide")
+st.set_page_config(page_title="StratIntel Solutions (Groq Edition)", page_icon="♟️", layout="wide")
 
 # ==========================================
 # 🔐 SISTEMA DE LOGIN
@@ -39,16 +42,17 @@ if not check_password():
     st.stop()
 
 # ==========================================
-# ⚙️ CONFIGURACIÓN Y MODELO
+# ⚙️ CONFIGURACIÓN Y MODELO (GROQ)
 # ==========================================
+# Si tienes la clave en secrets, úsala. Si no, déjala vacía para pedirla en el sidebar.
 API_KEY_FIJA = "" 
-if "GOOGLE_API_KEY" in st.secrets:
-    API_KEY_FIJA = st.secrets["GOOGLE_API_KEY"]
+if "GROQ_API_KEY" in st.secrets:
+    API_KEY_FIJA = st.secrets["GROQ_API_KEY"]
 
-MODELO_ACTUAL = "gemini-2.5-flash"  
+MODELO_ACTUAL = "llama3-70b-8192"  # El "GPT-4 Killer" de código abierto
 
 # ==========================================
-# 🧠 BASE DE DATOS MAESTRA (V15 - ENFOQUES INTEGRALES)
+# 🧠 BASE DE DATOS MAESTRA (GRAND UNIFIED STRATEGY)
 # ==========================================
 DB_CONOCIMIENTO = {
     "✨ RECOMENDACIÓN AUTOMÁTICA": {
@@ -56,11 +60,89 @@ DB_CONOCIMIENTO = {
         "preguntas": ["Identifica los hallazgos estratégicos más críticos.", "Realiza una evaluación integral de riesgos.", "Genera un Resumen Ejecutivo (BLUF).", "¿Cuáles son las anomalías o patrones ocultos más relevantes?"]
     },
 
-    # -------------------------------------------------------------------------
-    # 🏛️ ESCUELA REALISTA (PODER Y ESTRUCTURA)
-    # -------------------------------------------------------------------------
-    "--- REALISMO Y PODER ---": { "desc": "", "preguntas": [] },
+    # =========================================================================
+    # 🌍 BLOQUE 1: ESTRUCTURA, HISTORIA Y PODER (REFINADO)
+    # =========================================================================
+    
+    # 1.1 META-TEORÍA Y FUERZAS PROFUNDAS -------------------------------------
+    "--- 1.1 FUERZAS PROFUNDAS Y TEORÍA ---": { "desc": "", "preguntas": [] },
 
+    "Renouvin & Duroselle (Fuerzas Profundas)": {
+        "desc": "Las fuerzas subyacentes (geografía, demografía, economía) vs la decisión del estadista.",
+        "preguntas": [
+            "Fuerzas Profundas Materiales: ¿Cómo la geografía, demografía o economía limitan inevitablemente la acción política (Determinismo)?",
+            "Fuerzas Profundas Espirituales: ¿Qué papel juegan los nacionalismos, el sentimiento colectivo o la psicología de masas en este conflicto?",
+            "El Estadista vs la Fuerza: ¿El líder está moldeando la historia o simplemente está siendo arrastrado por corrientes profundas que no controla?"
+        ]
+    },
+    "Dougherty & Pfaltzgraff (Teorías en Pugna)": {
+        "desc": "Marco comparativo de teorías (Ambientales, Sistémicas, Decisorias).",
+        "preguntas": [
+            "Teorías Ambientales: ¿El conflicto es inevitable debido a la escasez de recursos o presiones ecológicas?",
+            "Nivel de Análisis: ¿La causa raíz está en el Individuo (líder), el Estado (régimen) o el Sistema (anarquía)?",
+            "Integración vs Desintegración: ¿Las fuerzas tecnológicas y económicas están uniendo a los actores o fragmentándolos en bloques hostiles?"
+        ]
+    },
+    
+    # 1.2 GRAN ESTRATEGIA Y CICLOS IMPERIALES ---------------------------------
+    "Jean-Baptiste Duroselle (Todo Imperio Perecerá)": {
+        "desc": "Ciclos vitales de las entidades políticas y sus causas de muerte.",
+        "preguntas": [
+            "Causa Exógena vs Endógena: ¿La amenaza principal proviene de una invasión externa o de la descomposición interna?",
+            "Pérdida de Energía Creadora: ¿La sociedad ha dejado de innovar y se ha vuelto rígida y burocrática?",
+            "Expansión Incontrolada: ¿Ha superado el Estado su 'radio de acción eficaz', volviéndose ingobernable?"
+        ]
+    },
+    "Robert Kaplan (La Venganza de la Geografía)": {
+        "desc": "El mapa como destino y las restricciones físicas del poder.",
+        "preguntas": [
+            "El Mapa del Alivio: ¿Cómo las montañas, ríos y desiertos imponen límites físicos insuperables a la ideología política?",
+            "Zonas de Choque: ¿Está el conflicto ocurriendo en una 'zona de aplastamiento' (shatterbelt) histórica inevitable?",
+            "Imperativos Geográficos: ¿Qué acciones está tomando el Estado simplemente porque su geografía se lo exige (salida al mar, defensa de fronteras llanas)?"
+        ]
+    },
+    "Paul Kennedy (Auge y Caída de las Grandes Potencias)": {
+        "desc": "Sobrestiramiento imperial (Imperial Overstretch).",
+        "preguntas": [
+            "Sobrestiramiento Imperial: ¿Están los compromisos militares y estratégicos del actor superando su capacidad económica para sostenerlos?",
+            "Base Económica vs Poder Militar: ¿Se está sacrificando la inversión productiva interna para financiar la seguridad externa?",
+            "Erosión Relativa: ¿El declive es absoluto o simplemente los rivales están creciendo más rápido?"
+        ]
+    },
+    "E.H. Carr (La Crisis de los Veinte Años)": {
+        "desc": "La crítica al utopismo liberal y la realidad del poder.",
+        "preguntas": [
+            "La Armonía de Intereses (Ilusión): ¿Están las potencias dominantes disfrazando sus propios intereses egoístas como 'valores universales' o 'bien común'?",
+            "El Elemento Poder: ¿Se está ignorando que la política es, en última instancia, una lucha por el poder y no una discusión ética?",
+            "Moralidad del Estado: ¿La moralidad que se predica es consistente con la capacidad real de ejercerla?"
+        ]
+    },
+    "Ray Cline (La Fórmula del Poder)": {
+        "desc": "Pp = (C + E + M) * (S + W) -> Potencial de Poder.",
+        "preguntas": [
+            "Masa Crítica (C): Evalúa Población + Territorio. ¿Tiene el estado la base física suficiente?",
+            "Capacidad Económica y Militar (E + M): ¿Cuál es su fuerza bruta tangible?",
+            "Estrategia y Voluntad (S + W): Estos son los multiplicadores. ¿Tiene el país una estrategia clara (S)? ¿Tiene el pueblo la voluntad nacional (W) de luchar? (Si esto es cero, el poder total es cero)."
+        ]
+    },
+    
+    # 1.3 REALISMO PURO Y GEOPOLÍTICA DURA ------------------------------------
+    "Halford Mackinder (Teoría del Heartland)": {
+        "desc": "El control de la Isla Mundial y el Pivote Geográfico.",
+        "preguntas": [
+            "Pivote Geográfico: ¿Quién controla actualmente el 'Heartland' (Eurasia central)?",
+            "Cinturón Interior: ¿Hay un conflicto por el control de las zonas costeras que rodean el Heartland?",
+            "Contención Terrestre: ¿Se está usando el poder terrestre para negar el acceso a las potencias marítimas?"
+        ]
+    },
+    "Nicholas Spykman (Teoría del Rimland)": {
+        "desc": "El control de los bordes anfibios (Rimland).",
+        "preguntas": [
+            "Anfibia Estratégica: Analiza el conflicto en las zonas costeras/peninsulares (Rimland).",
+            "Cerco: ¿Están las potencias tratando de rodear al actor central desde el mar?",
+            "Valor de las Alianzas: ¿Qué alianzas en el borde euroasiático son vitales para mantener el equilibrio?"
+        ]
+    },
     "Hans Morgenthau (Realismo Clásico Integral)": {
         "desc": "Los 6 Principios del Realismo Político y el Interés como Poder.",
         "preguntas": [
@@ -68,6 +150,14 @@ DB_CONOCIMIENTO = {
             "Interés y Poder: Define el 'Interés Nacional' de los actores en términos de poder, no de moralidad.",
             "Supervivencia del Estado: ¿Está la integridad territorial o política del Estado en riesgo directo?",
             "Autonomía de la Esfera Política: Analiza la decisión desde una lógica puramente política, ignorando consideraciones económicas o legales secundarias."
+        ]
+    },
+    "Hans Morgenthau (El Gran Debate: Realismo vs Legalismo)": {
+        "desc": "La lucha contra el enfoque legalista-moralista en política exterior.",
+        "preguntas": [
+            "Prudencia vs Moral Abstracta: ¿Se está juzgando la acción política por sus consecuencias políticas (Prudencia) o por principios morales abstractos que llevarán al desastre?",
+            "Interés Nacional Objetivo: ¿El líder está actuando para salvar la nación o para satisfacer una ideología personal?",
+            "La Autonomía de lo Político: ¿Se está permitiendo que abogados o economistas dicten decisiones que deberían ser puramente estratégicas?"
         ]
     },
     "Kenneth Waltz (Neorrealismo / Imágenes)": {
@@ -115,9 +205,9 @@ DB_CONOCIMIENTO = {
     },
 
     # -------------------------------------------------------------------------
-    # 🤝 ESCUELA LIBERAL Y CONSTRUCTIVISTA (INSTITUCIONES E IDENTIDAD)
+    # 🤝 BLOQUE 2: ESCUELA LIBERAL Y CONSTRUCTIVISTA (INSTITUCIONES E IDENTIDAD)
     # -------------------------------------------------------------------------
-    "--- LIBERALISMO, IDENTIDAD Y COOPERACIÓN ---": { "desc": "", "preguntas": [] },
+    "--- LIBERALISMO, IDENTIDAD ---": { "desc": "", "preguntas": [] },
 
     "Joseph Nye (Poder Multidimensional 3D)": {
         "desc": "Soft Power, Smart Power y el Tablero de Ajedrez Tridimensional.",
@@ -127,17 +217,6 @@ DB_CONOCIMIENTO = {
             "Tablero Superior (Militar): Analiza la distribución de poder militar (¿Unipolar?).",
             "Tablero Medio (Económico): Analiza la distribución económica (¿Multipolar?).",
             "Tablero Inferior (Transnacional): ¿Qué actores no estatales (Hackers, ONGs, Terrorismo) actúan fuera del control estatal?"
-        ]
-    },
-    "Robert Axelrod (Complejidad de la Cooperación)": {
-        "desc": "Teoría de Juegos, Evolución de la Cooperación y Normas.",
-        "preguntas": [
-            "El Dilema del Prisionero: ¿Existen incentivos estructurales que hacen racional la traición individual?",
-            "Estrategia Tit-for-Tat: ¿Está el actor respondiendo con reciprocidad estricta? ¿Está respondiendo proporcionalmente o escalando?",
-            "La Sombra del Futuro: ¿Es la interacción lo suficientemente duradera para fomentar la cooperación? ¿Tienen expectativas de interactuar nuevamente?",
-            "Meta-Normas: ¿Existe presión social o sanciones de terceros para castigar a los desertores?",
-            "Detección de Trampas: ¿Qué mecanismos de verificación existen para asegurar el cumplimiento?",
-            "Estructura de Pagos: ¿Cómo alterar los incentivos para que cooperar sea más rentable que traicionar?"
         ]
     },
     "Immanuel Kant (Triángulo de la Paz Liberal)": {
@@ -167,6 +246,22 @@ DB_CONOCIMIENTO = {
             "Normas Internacionales: ¿Qué normas están constriñendo o habilitando la acción?"
         ]
     },
+    "Teoría de la Integración Económica (Etapas y Modelos)": {
+        "desc": "Niveles de fusión de mercados (Balassa y otros).",
+        "preguntas": [
+            "Nivel de Integración: ¿En qué fase están? 1) Zona de Libre Comercio (eliminar aranceles), 2) Unión Aduanera (arancel externo común), 3) Mercado Común (movilidad de factores), 4) Unión Económica (política fiscal/monetaria).",
+            "Creación vs Desviación de Comercio: ¿El acuerdo genera riqueza real o simplemente desplaza a proveedores más eficientes externos?",
+            "Spillover (Desbordamiento): ¿La integración económica está forzando inevitablemente la integración política?"
+        ]
+    },
+    "Esther Barbé (Multilateralismo y Potencias Emergentes)": {
+        "desc": "Adaptación del orden internacional y contestación normativa.",
+        "preguntas": [
+            "Contestación Normativa: ¿Las potencias emergentes están desafiando las reglas del juego o solo quieren un asiento en la mesa?",
+            "Multilateralismo a la Carta: ¿Están los actores eligiendo selectivamente qué normas cumplir y cuáles ignorar?",
+            "Cambio de Poder: ¿Las instituciones actuales reflejan la distribución real de poder o están obsoletas?"
+        ]
+    },
     "Samuel Huntington (Choque de Civilizaciones)": {
         "desc": "Conflictos de identidad cultural y religiosa.",
         "preguntas": [
@@ -177,8 +272,154 @@ DB_CONOCIMIENTO = {
         ]
     },
 
+    # =========================================================================
+    # ⚔️ BLOQUE 3: ESTRATEGIA MILITAR Y TRANSFORMACIÓN DE LA GUERRA
+    # =========================================================================
+    "--- ARTE DE LA GUERRA Y NUEVOS CONFLICTOS ---": { "desc": "", "preguntas": [] },
+
+    "B.H. Liddell Hart (La Estrategia de Aproximación Indirecta)": {
+        "desc": "Evitar la fortaleza, atacar la debilidad, dislocar al enemigo.",
+        "preguntas": [
+            "Línea de Menor Resistencia: ¿Está el actor atacando donde el enemigo menos lo espera (física o psicológicamente)?",
+            "Dislocación: ¿Las maniobras han logrado separar al enemigo de su base, suministros o equilibrio mental antes del combate?",
+            "Objetivos Alternativos: ¿Tiene el plan flexibilidad para cambiar de objetivo y mantener al enemigo en dilema?"
+        ]
+    },
+    "Martin van Creveld (La Transformación de la Guerra)": {
+        "desc": "Guerra No-Trinitaria y conflictos de baja intensidad.",
+        "preguntas": [
+            "Ruptura de la Trinidad: ¿El conflicto ignora la distinción clásica entre Gobierno, Ejército y Pueblo?",
+            "Actores No Estatales: ¿Son las facciones, tribus o señores de la guerra más relevantes que el Estado?",
+            "Guerra por la Existencia: ¿Se lucha por intereses políticos racionales o por mera supervivencia e identidad?"
+        ]
+    },
+    "Mary Kaldor (Las Nuevas Guerras)": {
+        "desc": "Conflictos post-Guerra Fría: Identidad + Globalización + Criminalidad.",
+        "preguntas": [
+            "Política de Identidad: ¿Se moviliza a la gente basándose en etiquetas étnicas/religiosas en lugar de ideología?",
+            "Métodos de Terror: ¿Es el desplazamiento forzado y el ataque a civiles el objetivo central, no un daño colateral?",
+            "Economía Depredadora: ¿Se financia la guerra mediante saqueo, mercado negro o ayuda humanitaria desviada?"
+        ]
+    },
+    "Sun Tzu (El Arte de la Guerra)": {
+        "desc": "Engaño, velocidad y victoria sin combate.",
+        "preguntas": [
+            "El Engaño: ¿Toda la operación se basa en una finta o distracción?",
+            "Ganar sin luchar: ¿Está el actor logrando sus objetivos políticos sin uso cinético de fuerza?",
+            "Conocimiento: ¿Conoce el actor al enemigo y a sí mismo?", 
+            "Terreno: ¿Es el terreno mortal, disperso o clave? ¿Cómo afecta la maniobra?"
+        ]
+    },
+    "Carl von Clausewitz (La Guerra Absoluta)": {
+        "desc": "La guerra como continuación de la política.",
+        "preguntas": [
+            "Trinidad Paradójica: Analiza la relación entre Pasión (Pueblo), Probabilidad (Ejército) y Razón (Gobierno).",
+            "Niebla y Fricción: ¿Qué imprevistos están ralentizando la operación?",
+            "Centro de Gravedad (COG): ¿Cuál es la fuente de poder del enemigo que, si cae, todo el sistema colapsa?",
+            "Política: ¿Es esta acción militar coherente con el objetivo político final?"
+        ]
+    },
+    "Guerra Híbrida (Doctrina Gerasimov)": {
+        "desc": "Sincronización de medios militares y no militares.",
+        "preguntas": [
+            "Fase Latente: ¿Se usa desinformación para desestabilizar antes del conflicto?",
+            "Fuerzas Proxy: ¿Se utilizan actores no estatales para negar responsabilidad?",
+            "Guerra Económica/Informativa: ¿Es el ataque principal cinético (bombas) o no cinético (sanciones/hackeos)?",
+            "Dominio de la Información: ¿Es el ataque informativo más devastador que el físico?"
+        ]
+    },
+    "Qiao Liang & Wang Xiangsui (Guerra Irrestricta)": {
+        "desc": "Todo es un arma: leyes, economía, drogas, medios.",
+        "preguntas": [
+            "Desbordamiento del Campo de Batalla: ¿Se está usando el sistema legal (Lawfare) como arma?",
+            "Guerra Financiera: ¿Se están atacando las monedas o mercados del adversario?",
+            "Guerra Cultural: ¿Se están atacando los valores fundacionales de la sociedad objetivo?"
+        ]
+    },
+
+    # =========================================================================
+    # 💰 BLOQUE 4: GEOECONOMÍA, TRANSNACIONALISMO Y ANARQUÍA
+    # =========================================================================
+    "--- ECONOMÍA ILÍCITA Y CAOS ---": { "desc": "", "preguntas": [] },
+
+    "Moisés Naím (Ilícito y el Fin del Poder)": {
+        "desc": "El lado oscuro de la globalización y la erosión del Estado.",
+        "preguntas": [
+            "Las Cinco Guerras: Analiza el tráfico de: 1) Drogas, 2) Armas, 3) Personas, 4) Propiedad Intelectual, 5) Dinero sucio.",
+            "Micropoderes: ¿Están actores pequeños y ágiles burlando las defensas de grandes burocracias estatales?",
+            "Estado Hueco: ¿Tienen las instituciones la fachada de gobierno pero están carcomidas por redes criminales?"
+        ]
+    },
+    "Robert Kaplan (La Anarquía que Viene)": {
+        "desc": "Escasez, tribalismo y erosión de fronteras.",
+        "preguntas": [
+            "Estrés de Recursos: ¿Es la escasez de agua, tierra o comida el motor oculto del conflicto?",
+            "Retribalización: ¿Están colapsando las identidades nacionales en favor de lealtades de clan o secta?",
+            "Fronteras Porosas: ¿El mapa político oficial ha dejado de representar la realidad del control territorial?"
+        ]
+    },
+    "Holm y Sorensen (Globalización Desigual)": {
+        "desc": "¿De quién es el orden mundial? El fin de la Guerra Fría y la brecha Norte-Sur.",
+        "preguntas": [
+            "Ganadores y Perdedores: La globalización no es uniforme. ¿Quién se está integrando en el núcleo económico y quién está siendo marginado a la periferia irrelevante?",
+            "Soberanía Fragmentada: ¿El Estado está perdiendo control frente a fuerzas globales (mercados) o frente a fuerzas locales (fragmentación étnica/regional)?",
+            "El Dilema del Estado Débil: ¿Se está imponiendo un modelo de 'democracia liberal' en un estado que carece de las estructuras básicas para sostenerlo?"
+        ]
+    },
+    "Edward Luttwak (Geoeconomía)": {
+        "desc": "La lógica del conflicto con la gramática del comercio.",
+        "preguntas": [
+            "Armamentalización del Comercio: ¿Se usan aranceles o bloqueos como armas?",
+            "Predación de Inversiones: ¿Está un estado adquiriendo infraestructura crítica del rival?",
+            "Soberanía Tecnológica: ¿Se está bloqueando el acceso a tecnología clave?"
+        ]
+    },
+
+    # =========================================================================
+    # 🤝 BLOQUE 5: NEGOCIACIÓN, JUEGOS Y CONFLICTO
+    # =========================================================================
+    "--- ESTRATEGIA DE INTERACCIÓN ---": { "desc": "", "preguntas": [] },
+
+    "Thomas Schelling (La Estrategia del Conflicto)": {
+        "desc": "Disuasión, Compulsión y la Racionalidad de lo Irracional.",
+        "preguntas": [
+            "Compulsión vs Disuasión: ¿Se intenta impedir una acción (Disuasión) o forzar a que ocurra (Compulsión)?",
+            "Puntos Focales (Schelling Points): ¿Existe una solución obvia donde convergerán las expectativas de ambos sin comunicarse?",
+            "La Racionalidad de la Irracionalidad: ¿Se está fingiendo locura o descontrol para obligar al otro a ceder?",
+            "Quemar los Barcos: ¿El actor se ha quitado a sí mismo la opción de retroceder para hacer creíble su amenaza?"
+        ]
+    },
+    "William Ury (Cómo Negociar sin Ceder)": {
+        "desc": "Negociación basada en principios y superación de bloqueos.",
+        "preguntas": [
+            "Intereses vs Posiciones: ¿Qué es lo que realmente quieren (Interés) vs lo que dicen que quieren (Posición)?",
+            "MAPAN (BATNA): ¿Cuál es la Mejor Alternativa a un Acuerdo Negociado de cada parte? (Quién tiene más poder de retiro).",
+            "Separar a la Persona del Problema: ¿Están las emociones o egos bloqueando la solución técnica?",
+            "El Puente de Oro: ¿Se le está ofreciendo al adversario una salida digna para que no pierda la cara?"
+        ]
+    },
+    "Robert Axelrod (Complejidad de la Cooperación)": {
+        "desc": "Teoría de Juegos, Evolución de la Cooperación y Normas.",
+        "preguntas": [
+            "El Dilema del Prisionero: ¿Existen incentivos estructurales que hacen racional la traición individual?",
+            "Estrategia Tit-for-Tat: ¿Está el actor respondiendo con reciprocidad estricta? ¿Está respondiendo proporcionalmente o escalando?",
+            "La Sombra del Futuro: ¿Es la interacción lo suficientemente duradera para fomentar la cooperación? ¿Tienen expectativas de interactuar nuevamente?",
+            "Meta-Normas: ¿Existe presión social o sanciones de terceros para castigar a los desertores?",
+            "Detección de Trampas: ¿Qué mecanismos de verificación existen para asegurar el cumplimiento?",
+            "Estructura de Pagos: ¿Cómo alterar los incentivos para que cooperar sea más rentable que traicionar?"
+        ]
+    },
+    "Teoría de Juegos (John Nash)": {
+        "desc": "Equilibrios matemáticos en la toma de decisiones.",
+        "preguntas": [
+            "Suma Cero vs Suma Variable: ¿Para que uno gane, el otro debe perderlo todo?",
+            "Equilibrio de Nash: ¿Cuál es la situación donde nadie tiene incentivos para cambiar su estrategia?",
+            "La Gallina (Chicken Game): ¿Quién cederá primero ante la inminencia del choque?"
+        ]
+    },
+
     # -------------------------------------------------------------------------
-    # 🧠 TOMA DE DECISIONES Y ANÁLISIS ESTRATÉGICO
+    # 🧠 BLOQUE 6: TOMA DE DECISIONES Y ANÁLISIS ESTRATÉGICO
     # -------------------------------------------------------------------------
     "--- TOMA DE DECISIONES Y SEGURIDAD ---": { "desc": "", "preguntas": [] },
 
@@ -211,115 +452,238 @@ DB_CONOCIMIENTO = {
             "Colapso del Adversario: ¿Cómo podemos generar ambigüedad para aislar al enemigo de su entorno?"
         ]
     },
-
-    # -------------------------------------------------------------------------
-    # 🌪️ TEORÍA DE LA COMPLEJIDAD Y CAOS (DETECTAR LO INVISIBLE)
-    # -------------------------------------------------------------------------
-    "--- COMPLEJIDAD Y SEÑALES DÉBILES ---": { "desc": "", "preguntas": [] },
-
-    "Análisis de Señales Débiles (Weak Signals)": {
-        "desc": "Detección temprana del 'Efecto Mariposa' y anomalías marginales.",
+    "Sherman Kent (Doctrina de Inteligencia Estratégica)": {
+        "desc": "Los fundamentos clásicos: Inteligencia como Conocimiento, Organización y Actividad.",
         "preguntas": [
-            "Detección de Ruido: Identifica datos, eventos o anécdotas marginales que los expertos están descartando como 'irrelevantes'.",
-            "Patrón de Rareza: ¿Existe algún evento extraño que haya ocurrido más de una vez en contextos diferentes (coincidencia sospechosa)?",
-            "Filtro de Amplificación: Si esta pequeña señal marginal creciera exponencialmente, ¿qué sistema colapsaría primero?",
-            "Voz Disidente: Busca en el texto la opinión más impopular o ridícula y analízala como si fuera la única verdad."
+            "La Pirámide de Kent: Clasifica la información analizada. ¿Es Nivel 1 (Hechos/Descriptivo), Nivel 2 (Tendencias/Explicativo) o Nivel 3 (Estimativo/Predictivo)?",
+            "Lenguaje Probabilístico: ¿Se utilizan términos de probabilidad estimativa precisos (ej: 'Muy Probable', 'Posibilidad Remota') o se usa lenguaje ambiguo para evitar responsabilidad (ej: 'podría', 'quizás')?",
+            "Ecuación de Riesgo: ¿Se están evaluando las 'Capacidades' (lo que el adversario PUEDE hacer) separadas de las 'Intenciones' (lo que QUIERE hacer)?",
+            "Relación Productor-Consumidor: ¿El análisis mantiene la objetividad necesaria o parece haber sido redactado para complacer una decisión política ya tomada (Politización)?"
         ]
     },
-    "Ventana de Johari (Unknown Unknowns)": {
-        "desc": "Exploración de puntos ciegos y vacíos ontológicos.",
+    "Marcelo de los Reyes (Inteligencia y RRII)": {
+        "desc": "La inteligencia como insumo crítico para la política exterior.",
         "preguntas": [
-            "Unknown Unknowns (Desconocidos-Desconocidos): ¿Qué es lo que NI SIQUIERA sabemos que no sabemos sobre este tema?",
-            "El Elefante en la Habitación: ¿Qué tema obvio está siendo sistemáticamente evitado u omitido en la información disponible?",
-            "Sesgo de Espejo: ¿Estamos asumiendo que el adversario piensa como nosotros? Rompe esa asunción.",
-            "Hipótesis Silenciosa: Genera una hipótesis basada en la ausencia de evidencia (lo que NO está pasando)."
-        ]
-    },
-    "Análisis de Redes Ocultas (Rizoma)": {
-        "desc": "Conexiones no lineales entre eventos dispares.",
-        "preguntas": [
-            "Mapeo de Vínculos Invisibles: Encuentra una conexión lógica entre dos eventos del texto que parezcan no tener relación alguna.",
-            "Nodos Ocultos: ¿Existe un tercer actor o factor (no mencionado) que podría estar moviendo los hilos de ambos bandos?",
-            "Efecto de Segundo y Tercer Orden: Si ocurre el evento principal, ¿qué efecto dominó inesperado ocurrirá en un sector ajeno (ej. impacto de una guerra en la moda o el clima)?",
-            "Análisis de Casualidad: Convierte una 'casualidad' mencionada en el texto en una causalidad intencional. ¿Cómo cambia la historia?"
+            "Politización de la Inteligencia: ¿Se está produciendo inteligencia para complacer al decisor político (Inteligencia a la carta)?",
+            "Diplomacia Paralela: ¿Están los servicios de inteligencia actuando como canales diplomáticos secretos?",
+            "Sorpresa Estratégica: ¿Falló la inteligencia por falta de datos o por falta de imaginación para interpretar las señales?"
         ]
     },
     
-    # -------------------------------------------------------------------------
-    # 🛠️ TÉCNICAS ESTRUCTURADAS (SATs)
-    # -------------------------------------------------------------------------
-    "--- TÉCNICAS ESTRUCTURADAS (SATs) ---": { "desc": "", "preguntas": [] },
+    # =========================================================================
+    # 🌐 BLOQUE 7: CIBERINTELIGENCIA Y REDES
+    # =========================================================================
+    "--- CIBERESPACIO E INFO ---": { "desc": "", "preguntas": [] },
 
-    "Análisis de Actores (Stakeholder Mapping)": {
-        "desc": "Mapeo de intereses, poder y posturas.",
+    "Cyber Kill Chain (Lockheed Martin)": {
+        "desc": "Fases de una intrusión cibernética.",
         "preguntas": [
-            "Matriz Poder vs Interés: Clasifica a todos los actores relevantes.",
-            "Identificación de Vetadores: ¿Quién tiene la capacidad de bloquear cualquier acuerdo?",
-            "Aliados y Spoilers: ¿Quién gana con la resolución y quién gana con la continuación del conflicto?"
+            "Reconocimiento: ¿Qué datos se están recolectando antes del ataque?",
+            "Armamentización: ¿Cómo se creó el malware o el exploit?",
+            "Entrega y Explotación: ¿Fue phishing, USB, vulnerabilidad web?",
+            "Acciones sobre Objetivos: ¿Se busca robar datos, destruir sistemas o secuestrar (Ransomware)?"
         ]
     },
-    "Análisis Geopolítico (PMESII-PT)": {
-        "desc": "Variables del entorno operativo: Político, Militar, Económico, Social, Info, Infraestructura, Físico, Tiempo.",
-        "preguntas": ["Interacción Política-Militar.", "Vulnerabilidad de Infraestructura crítica.", "Impacto Social y Cultural.", "Desglose completo PMESII-PT."]
-    },
-    "Análisis DIME (Poder Nacional)": {
-        "desc": "Diplomático, Informacional, Militar, Económico.",
-        "preguntas": ["Capacidad de proyección Económica (Sanciones/Ayudas).", "Aislamiento o alianzas Diplomáticas.", "Guerra de Información y Narrativa.", "Capacidad Militar real vs disuasoria."]
-    },
-    "Análisis de Hipótesis en Competencia (ACH)": {
-        "desc": "Matriz para evitar sesgos de confirmación.",
+    "Teoría del Actor-Red (Latour)": {
+        "desc": "Humanos y objetos (algoritmos) tienen agencia.",
         "preguntas": [
-            "Generación: Formula al menos 4 hipótesis exclusivas sobre lo que está ocurriendo.",
-            "Diagnóstico: Identifica la evidencia que sea consistente con una hipótesis pero inconsistente con las otras.",
-            "Engaño (Decepción): ¿Alguna evidencia podría haber sido plantada para engañarnos?"
+            "Agencia Tecnológica: ¿Cómo un algoritmo o plataforma está moldeando el conflicto por sí solo?",
+            "Cajas Negras: ¿Qué procesos técnicos se están aceptando sin cuestionar su funcionamiento?",
+            "Traducción: ¿Cómo se están redefiniendo los intereses a través de la red?"
         ]
     },
-    "Abogado del Diablo": {
-        "desc": "Pensamiento crítico.",
-        "preguntas": ["Desafío frontal a la conclusión más probable.", "Defensa lógica de la postura 'irracional' del adversario."]
-    },
-    "Análisis de Cisne Negro (Nassim Taleb)": {
-        "desc": "Eventos altamente improbables de impacto masivo.",
+    "Modelo Diamante de Intrusión": {
+        "desc": "Relación entre Adversario, Infraestructura, Capacidad y Víctima.",
         "preguntas": [
-            "Lo Impensable: Describe un evento 'imposible' que haría colapsar toda la estrategia actual.",
-            "Fragilidad vs Antifragilidad: ¿El sistema se rompe con el estrés o se fortalece?",
-            "Falacia Narrativa: ¿Estamos inventando una historia coherente para explicar datos que son puro azar?"
+            "Eje Adversario-Víctima: ¿Cuál es la intención sociopolítica detrás del ataque técnico?",
+            "Eje Infraestructura-Capacidad: ¿Qué servidores o IPs (Infraestructura) soportan el malware (Capacidad)?",
+            "Pivoteo: ¿Podemos usar la infraestructura detectada para encontrar otras víctimas desconocidas?"
         ]
     },
-    "Análisis FODA (SWOT) de Inteligencia": {
-        "desc": "Enfoque estratégico ofensivo/defensivo.",
+
+    # =========================================================================
+    # 🧠 BLOQUE 8: PSICOLOGÍA Y MENTE DEL ADVERSARIO
+    # =========================================================================
+    "--- PSICOLOGÍA OPERATIVA ---": { "desc": "", "preguntas": [] },
+
+    "Robert M. Ryder (Conciencia de Dominio / Domain Awareness)": {
+        "desc": "Comprensión holística y cognitiva del entorno operativo total.",
         "preguntas": [
-            "Vulnerabilidades Críticas (Debilidades internas).",
-            "Amenazas Inminentes (Externas).",
-            "Estrategia de Supervivencia (Mini-Maxi): Minimizar debilidades para evitar amenazas.",
-            "Ventana de Oportunidad: ¿Cómo usar las fortalezas actuales para explotar una oportunidad temporal?"
+            "Ceguera de Dominio: ¿Qué esfera del entorno (marítima, ciber, espacial, humana) estamos ignorando por falta de sensores?",
+            "Fusión de Datos: ¿Se están conectando puntos aislados para formar una imagen operativa común (COP)?",
+            "Anticipación Cognitiva: ¿Estamos reaccionando a eventos o previendo flujos en el entorno?",
+            "Conciencia Cultural: ¿Entendemos el 'terreno humano' tan bien como el terreno físico?"
         ]
     },
-    "Técnica de los 5 Porqués": {
-        "desc": "Búsqueda de la Causa Raíz.",
+    "Perfilado Dark Triad (Tríada Oscura)": {
+        "desc": "Psicopatía, Narcisismo y Maquiavelismo en el liderazgo.",
         "preguntas": [
-            "Define el problema visible.",
-            "Pregunta 1: ¿Por qué ocurre esto?",
-            "Pregunta 2: ¿Por qué ocurre lo anterior? (Repetir hasta 5 veces)",
-            "Identifica la falla sistémica original, no el síntoma."
+            "Narcisismo: ¿El líder necesita admiración constante y reacciona con ira a la crítica?",
+            "Maquiavelismo: ¿Manipula a aliados y enemigos sin remordimiento?",
+            "Psicopatía: ¿Muestra falta total de empatía y toma riesgos impulsivos?",
+            "Vulnerabilidad del Ego: ¿Cómo se puede explotar su necesidad de validación?"
         ]
     },
-    "Escenarios Prospectivos": {
-        "desc": "Cono de Plausibilidad.",
-        "preguntas": ["Escenario Mejor Caso.", "Escenario Peor Caso.", "Escenario Cisne Negro (Wild Card).", "Drivers (Motores de cambio) clave."]
-    },
-    "Centro de Gravedad (COG)": {
-        "desc": "Clausewitz.",
-        "preguntas": ["Identificación del COG Estratégico.", "Capacidades Críticas (Requerimientos).", "Vulnerabilidades Críticas (Puntos débiles)."]
-    },
-    "Matriz CARVER": {
-        "desc": "Selección y priorización de objetivos.",
+    "Código MICE (Motivaciones de Traición)": {
+        "desc": "Money, Ideology, Coercion, Ego.",
         "preguntas": [
-            "Criticidad: ¿Qué tan vital es este objetivo para la misión enemiga?",
-            "Vulnerabilidad: ¿Qué tan fácil es atacarlo?",
-            "Recuperabilidad: ¿Cuánto tiempo tardarían en reemplazarlo?",
-            "Efecto: ¿Cuál es el impacto sistémico de su neutralización?"
+            "Dinero (Money): ¿Existen crisis financieras personales?",
+            "Ideología (Ideology): ¿Cree el sujeto en una causa superior opuesta?",
+            "Coerción (Coercion): ¿Existe material de chantaje (Kompromat)?",
+            "Ego: ¿Se siente infravalorado o busca venganza?"
         ]
+    },
+    "Allan Pease (Lenguaje No Verbal y Poder)": {
+        "desc": "Lectura de gestos, posturas y congruencia.",
+        "preguntas": [
+            "Congruencia: ¿Lo que dice el líder verbalmente coincide con sus gestos? (Si no, el gesto dice la verdad).",
+            "Gestos de Poder y Dominio: ¿Usa la 'Cúpula de Poder' (manos), palmas ocultas o toma de espacio territorial?",
+            "Microexpresiones: ¿Hay fugas faciales de miedo, desprecio o ira en momentos clave del discurso?"
+        ]
+    },
+    "Gustave Le Bon (Psicología de Masas)": {
+        "desc": "Comportamiento irracional y contagio emocional.",
+        "preguntas": [
+            "Contagio Mental: ¿Cómo se propaga la emoción irracional?",
+            "Líder de Masas: ¿Quién canaliza el odio o la esperanza de la multitud?",
+            "Imágenes Simplistas: ¿Qué eslóganes reemplazan el pensamiento lógico?"
+        ]
+    },
+    "David Alandete (Fake News: Arma de Destrucción Masiva)": {
+        "desc": "Desinformación, polarización y algoritmos.",
+        "preguntas": [
+            "Objetivo de la Desinformación: ¿Buscan convencer de una mentira o simplemente sembrar duda y caos para paralizar la sociedad?",
+            "Cámaras de Eco: ¿Se está usando el algoritmo para radicalizar grupos específicos?",
+            "Actores Proxy: ¿Quién está amplificando el mensaje? (Bots, tontos útiles, medios estatales disfrazados)."
+        ]
+    },
+    "Edward Bernays (Propaganda y Relaciones Públicas)": {
+        "desc": "La ingeniería del consentimiento y la manipulación de la 'mente de grupo'.",
+        "preguntas": [
+            "Autoridad de Terceros: ¿El mensaje utiliza a 'expertos independientes' (médicos, científicos) para vender una idea y burlar el escepticismo?",
+            "Creación de Eventos: ¿La noticia es un hecho espontáneo o un 'pseudo-evento' fabricado para generar cobertura mediática?",
+            "Apelación al Instinto Gregario: ¿Se presenta la idea como algo que 'todos los líderes inteligentes' ya aceptan, aislando al disidente?"
+        ]
+    },
+    "Cass R. Sunstein (Rumorología y Cascadas de Información)": {
+        "desc": "Cómo se propagan las creencias falsas y la polarización de grupos.",
+        "preguntas": [
+            "Cascadas de Disponibilidad: ¿El rumor se ha vuelto creíble solo porque 'se repite en todas partes' (reputación social) y no por evidencia real?",
+            "Polarización de Grupo: ¿El debate interno está volviendo al grupo más extremo de lo que era al principio?",
+            "Asimilación Sesgada: ¿Los actores están aceptando ciegamente la información que confirma sus sesgos y descartando agresivamente la evidencia contraria?"
+        ]
+    },
+    "Wilson Bryan Key (Seducción Subliminal)": {
+        "desc": "Estímulos ocultos que apelan al subconsciente (Eros y Thanatos).",
+        "preguntas": [
+            "Implantes Emocionales: ¿Existen elementos visuales o auditivos ocultos diseñados para provocar ansiedad o deseo sexual sin pasar por el filtro racional?",
+            "Sobrecarga Sensorial: ¿Se está bombardeando al consciente con datos irrelevantes para que el subconsciente acepte una orden oculta?",
+            "Apelación a la Muerte/Deseo: ¿El discurso o imagen juega con los miedos primarios a la extinción o con los impulsos reproductivos?"
+        ]
+    },
+    "Harold Lasswell (Teoría de la Propaganda)": {
+        "desc": "Gestión de actitudes colectivas y símbolos.",
+        "preguntas": [
+            "Fórmula de Lasswell: ¿QUIÉN (control) dice QUÉ (contenido) a QUIÉN (audiencia) en qué CANAL (medio) con qué EFECTO?",
+            "Gestión de Símbolos: ¿Qué mitos, himnos o banderas se están manipulando para evocar emociones irracionales?",
+            "Movilización del Odio: ¿Se está dirigiendo la agresividad colectiva hacia un enemigo común fabricado?"
+        ]
+    },
+    "Joseph Goebbels (Matriz de Propaganda Completa)": {
+        "desc": "Auditoría forense de los 11 principios de manipulación de masas.",
+        "preguntas": [
+            "1. Principio de Simplificación y Enemigo Único: ¿Se reduce toda la complejidad del problema a un solo símbolo, eslogan o enemigo a batir?",
+            "2. Principio del Método de Contagio: ¿Se reúnen diversos adversarios (que no tienen nada que ver entre sí) bajo una sola categoría o etiqueta negativa para demonizarlos en bloque?",
+            "3. Principio de la Transposición: ¿Carga el emisor sus propios errores o defectos sobre el adversario? ('Acusa al otro de lo que tú haces').",
+            "4. Principio de la Exageración y Desfiguración: ¿Se convierte un hecho anecdótico, pequeño o aislado en una amenaza grave o crisis sistémica?",
+            "5. Principio de la Vulgarización: ¿El mensaje está adaptado deliberadamente al nivel menos inteligente de la audiencia, evitando argumentos racionales complejos?",
+            "6. Principio de Orquestación: ¿Se limitan a pocas ideas básicas pero las repiten incansablemente desde diferentes ángulos o perspectivas?",
+            "7. Principio de Renovación: ¿Se emiten nuevas acusaciones o informaciones tan rápido que, cuando el adversario responde, el público ya está interesado en otra cosa?",
+            "8. Principio de la Verosimilitud: ¿Se construyen argumentos basándose en fuentes parciales, fragmentos de verdad o 'globos sonda' para dar credibilidad a una mentira mayor?",
+            "9. Principio de la Silenciación: ¿Se omiten o acallan sistemáticamente las noticias que favorecen al rival o las que contradicen la narrativa oficial?",
+            "10. Principio de la Transfusión: ¿Se opera sobre un sustrato de odio, prejuicio, mitología o tradición preexistente en la cultura para potenciar el mensaje?",
+            "11. Principio de la Unanimidad: ¿Se crea la falsa impresión de que 'todo el mundo' piensa así y que el disidente está socialmente aislado?"
+        ]
+    },
+        
+    # =========================================================================
+    # 🔮 BLOQUE 9: PROSPECTIVA Y COMPLEJIDAD
+    # =========================================================================
+    "--- FUTUROS Y SISTEMAS ---": { "desc": "", "preguntas": [] },
+
+    "Análisis Causal por Capas (CLA - Inayatullah)": {
+        "desc": "Deconstrucción profunda de la realidad.",
+        "preguntas": [
+            "La Letanía: ¿Qué dicen los titulares oficiales?",
+            "Causas Sistémicas: ¿Qué estructuras generan el problema?",
+            "Visión del Mundo: ¿Qué ideologías sostienen el sistema?",
+            "Mito y Metáfora: ¿Cuál es la historia inconsciente detrás de todo?"
+        ]
+    },
+    "Michel Godet (Prospectiva Estratégica)": {
+        "desc": "De la anticipación a la acción (El Triángulo Griego: Anticipación, Apropiación, Acción).",
+        "preguntas": [
+            "Preactividad vs Proactividad: ¿Nos estamos preparando para cambios esperados (seguro) o estamos provocando los cambios deseados (apuesta)?",
+            "Actitud Estratégica: ¿El actor es reactivo (apaga fuegos), preactivo (se prepara para lo inevitable) o proactivo (provoca el cambio deseado)?",
+            "Variables Clave (MICMAC): Identifica las variables 'motrices' ocultas que controlan el sistema (causas raíz) vs las variables 'dependientes' (síntomas).",
+            "Juego de Actores (MACTOR): ¿Qué convergencias (aliados) y divergencias (conflictos) de objetivos existen y quién tiene la fuerza para imponer su voluntad?",
+            "El Camino Estratégico: Contrasta el 'Escenario Probable' (tendencial) con el 'Escenario Deseable'. ¿Qué acciones concretas deben tomarse para cerrar esa brecha?"
+        ]
+    },
+    "Nassim Taleb (Cisne Negro & Antifragilidad)": {
+        "desc": "Gestión de lo improbable y el caos.",
+        "preguntas": [
+            "Cisne Negro: Evento de probabilidad baja e impacto infinito.",
+            "Rinoceronte Gris: Amenaza obvia ignorada voluntariamente.",
+            "Antifragilidad: ¿Qué actor se beneficia del desorden?"
+        ]
+    },
+    "Análisis de Señales Débiles (Weak Signals)": {
+        "desc": "Detección temprana de anomalías.",
+        "preguntas": [
+            "Ruido Marginal: ¿Qué dato 'irrelevante' se repite?",
+            "Ceguera Experta: Identifica qué escenarios están siendo descartados por los expertos oficiales por considerarlos 'imposibles' o 'ridículos'.",
+            "Patrones de Rareza: ¿Qué evento rompe la continuidad histórica?"
+        ]
+    },
+
+    # =========================================================================
+    # 🕵️ BLOQUE 10: VERIFICACIÓN
+    # =========================================================================
+    "--- ANÁLISIS COMPARATIVO ---": { "desc": "", "preguntas": [] },
+
+    "Triangulación de Fuentes (Cross-Check)": {
+        "desc": "Técnica forense para detectar contradicciones, mentiras y vacíos entre múltiples documentos.",
+        "preguntas": [
+            "Matriz de Contradicciones: Genera una tabla comparativa identificando EXCLUSIVAMENTE los puntos donde el 'Documento A' dice algo diferente al 'Documento B' (Fechas, cifras, nombres).",
+            "Análisis de Silencios: ¿Qué información crucial menciona una fuente pero es omitida sospechosamente por las otras?",
+            "Divergencia Narrativa: ¿Cómo cambia el tono o la intención política entre una versión y otra?",
+            "Veredicto de Credibilidad: Basado en la consistencia interna y externa, ¿qué fuente parece tener mayor acceso a la verdad y cuál parece intoxicada?"
+        ]
+    },
+    "Análisis de Decepción y Engaño": {
+        "desc": "Detección de manipulación informativa.",
+        "preguntas": [
+            "Señuelos: ¿Existe información demasiado perfecta o detallada diseñada para atraer nuestra atención lejos de lo importante?",
+            "Canales de Retroalimentación: ¿El adversario nos está diciendo lo que queremos escuchar (Sesgo de confirmación)?",
+            "Inconsistencias Temporales: ¿Hay eventos reportados en una secuencia cronológica imposible?"
+        ]
+    },
+    
+    # =========================================================================
+    # 🛠️ BLOQUE 11: HERRAMIENTAS TÁCTICAS (SATs)
+    # =========================================================================
+    "--- HERRAMIENTAS ESTRUCTURADAS ---": { "desc": "", "preguntas": [] },
+
+    "Análisis de Hipótesis en Competencia (ACH)": { "desc": "Matriz científica para evitar sesgos.", "preguntas": ["Generación de Hipótesis.", "Matriz de Evidencia.", "Diagnóstico de Consistencia.", "Refutación."] },
+    "Análisis de Actores (Stakeholder Mapping)": { "desc": "Mapa de poder e intereses.", "preguntas": ["Matriz Poder/Interés.", "Vetadores.", "Spoilers (Saboteadores)."] },
+    "Matriz CARVER (Selección de Objetivos)": { "desc": "Evaluación de blancos.", "preguntas": ["Criticidad.", "Accesibilidad.", "Recuperabilidad.", "Vulnerabilidad.", "Efecto.", "Reconocibilidad."] },
+    "Análisis PMESII-PT (Entorno Operativo)": { "desc": "Análisis holístico.", "preguntas": ["Político/Militar.", "Económico/Social.", "Información/Infraestructura.", "Físico/Tiempo."] },
+    "Análisis FODA (SWOT) de Inteligencia": { "desc": "Ofensivo/Defensivo.", "preguntas": ["Amenazas Inminentes.", "Oportunidades.", "Vulnerabilidades Internas.", "Fortalezas."] },
+    "Técnica de los 5 Porqués": { "desc": "Búsqueda de Causa Raíz.", "preguntas": ["Síntoma.", "¿Por qué? (x5).", "Falla Sistémica."] },
+    "Abogado del Diablo": { "desc": "Desafío de asunciones.", "preguntas": ["Desafío Frontal a la tesis principal.", "Defensa de la postura irracional del adversario."] },
+    "Richards J. Heuer (Psicología del Análisis de Inteligencia)": { "desc": "Chequeo de sesgos cognitivos del propio analista.", "preguntas": ["Sesgo de Confirmación: ¿Estamos buscando solo información que confirma nuestra hipótesis y descartando la que la contradice?", "Imagen en Espejo: ¿Estamos asumiendo que el adversario piensa y actúa racionalmente como nosotros?", "Anclaje: ¿Estamos demasiado atados a la primera estimación o dato que recibimos al inicio de la crisis?"
+         ]
     }
 }
 
@@ -327,30 +691,90 @@ DB_CONOCIMIENTO = {
 # 📘 TEXTO DEL MANUAL (CONTENIDO ESTÁTICO)
 # ==========================================
 MANUAL_USUARIO = """
-# 📘 MANUAL DE OPERACIONES | SISTEMA STRATINTEL SOLUTIONS (BETA)
+# 📘 MANUAL INTEGRAL | SISTEMA STRATINTEL SOLUTIONS
 
-## 1. INTRODUCCIÓN
-**StratIntel** es un Sistema de Soporte a la Decisión (DSS) diseñado para analistas de inteligencia.
+## PARTE 1: OPERACIONES TÉCNICAS
+**1. INTRODUCCIÓN**
+StratIntel es un Sistema de Soporte a la Decisión (DSS) que utiliza IA para aplicar marcos teóricos de inteligencia y relaciones internacionales a documentos no estructurados.
 
-## 2. VERSIONES DEL SISTEMA
-* **🛡️ Versión Beta:** Solo documentos locales. Sin conexión externa.
-* **🌐 Versión Master:** Conexión Web y YouTube (si está habilitada).
-
-## 3. FLUJO DE TRABAJO
-1. **Ingesta:** Suba sus PDFs, DOCXs o pegue texto en la pestaña correspondiente.
-2. **Configuración:** Ingrese su API Key en el menú lateral.
-3. **Misión:** Seleccione las técnicas de análisis (Ej: Realismo, Prospectiva).
-4. **Profundidad:**
-    * *Estratégico:* Resumen ejecutivo.
-    * *Táctico:* Responde todas las preguntas.
+**2. FLUJO DE TRABAJO BÁSICO**
+1.  **Ingesta:** Suba sus PDFs, DOCXs o pegue texto en la pestaña correspondiente.
+2.  **Configuración:** Ingrese su API Key en el menú lateral.
+3.  **Selección:** Elija el Marco Teórico adecuado para su misión (Ver Parte 2).
+4.  **Profundidad:**
+    * *Estratégico:* Resumen ejecutivo (BLUF).
+    * *Táctico:* Responde todas las preguntas teóricas.
     * *Operacional:* Selección manual de preguntas.
 
-## 4. HERRAMIENTAS ESPECIALES
-* **🎨 Visualización:** Genere mapas de actores al final del reporte.
+**3. HERRAMIENTAS ESPECIALES**
+* **🎨 Visualización:** (Si está activo) Genera esquemas de actores al final del reporte.
 * **🕵️ Contrainteligencia:** Cargue 2+ documentos y use la técnica "Triangulación" para hallar contradicciones.
+* **💾 Exportación:** Use los botones al final para descargar en Word o PDF.
 
-## 5. EXPORTACIÓN
-Use los botones al final para descargar el informe en Word o PDF.
+---
+
+## PARTE 2: DICCIONARIO DE DOCTRINA Y ANÁLISIS
+*Guía de referencia para interpretar los resultados de cada técnica.*
+
+### 🌍 BLOQUE 1: ESTRUCTURA Y PODER
+* **Fuerzas Profundas (Renouvin & Duroselle):** Analiza si el conflicto es causado por la voluntad de un líder o por corrientes históricas inevitables (geografía, demografía).
+* **Ciclos Imperiales (Kennedy & Duroselle):** Busca síntomas de "Sobrestiramiento Imperial" (gasto militar excesivo) o decadencia interna en grandes potencias.
+* **Venganza de la Geografía (Kaplan):** Identifica cómo el mapa físico (montañas, ríos) dicta el destino político y las zonas de conflicto (Shatterbelts).
+* **Realismo Clásico (Morgenthau, Carr, Cline):**
+    * *Morgenthau:* Evalúa el interés nacional en términos de poder y supervivencia, ignorando la moral.
+    * *Carr:* Detecta la hipocresía de potencias que disfrazan intereses egoístas como "valores universales".
+    * *Cline:* Calcula el potencial de poder: $Pp = (C + E + M) * (S + W)$.
+* **Geopolítica Dura (Mackinder & Spykman):** Analiza el control territorial global. ¿Quién domina el "Corazón Continental" (Heartland) y quién los bordes costeros (Rimland)?
+* **Neorrealismo (Waltz & Mearsheimer):**
+    * *Defensivo (Waltz):* El estado solo busca seguridad.
+    * *Ofensivo (Mearsheimer):* El estado busca hegemonía total y aprovechará cualquier oportunidad para debilitar rivales.
+
+### 🤝 BLOQUE 2: INSTITUCIONES E IDENTIDAD
+* **Poder Multidimensional (Nye):** Evalúa el uso de *Soft Power* (atracción cultural) y *Smart Power* (combinación de fuerza y diplomacia).
+* **Paz Liberal (Kant & Keohane):** Analiza si el comercio y las instituciones internacionales hacen que la guerra sea "demasiado costosa" (Interdependencia).
+* **Constructivismo (Wendt & Huntington):**
+    * *Wendt:* ¿El enemigo es una construcción social?
+    * *Huntington:* ¿Es un choque de civilizaciones (identidad cultural/religiosa) y no ideológico?
+
+### ⚔️ BLOQUE 3: ESTRATEGIA MILITAR
+* **Aproximación Indirecta (Liddell Hart):** Verifica si el actor ataca la debilidad del enemigo evitando el choque frontal (físico o psicológico).
+* **Nuevas Guerras (Kaldor & Creveld):** Para conflictos modernos donde se mezcla crimen, limpieza étnica y actores no estatales (cárteles, terrorismo).
+* **Guerra Irrestricta (Qiao Liang):** Identifica el uso de "todo" como arma: leyes (Lawfare), economía, drogas y medios de comunicación.
+
+### 💰 BLOQUE 4: GEOECONOMÍA Y CAOS
+* **Economía Ilícita (Naím):** Analiza el poder de redes criminales (narco, tráfico) que erosionan al Estado.
+* **Geoeconomía (Luttwak):** El uso de la gramática del comercio (sanciones, deuda, inversiones predatorias) para fines de guerra.
+
+### 🤝 BLOQUE 5: NEGOCIACIÓN Y JUEGOS
+* **Estrategia del Conflicto (Schelling):** Analiza el uso racional de la irracionalidad, la disuasión y los puntos focales en una crisis.
+* **Teoría de Juegos (Axelrod & Nash):** Modela matemáticamente la cooperación. ¿Estamos en un dilema del prisionero (traición incentiva) o juego de la gallina (choque inminente)?
+
+### 🧠 BLOQUE 6: TOMA DE DECISIONES
+* **Modelos de Decisión (Allison):** Determina si una acción fue racional (Modelo I), una rutina burocrática (Modelo II) o resultado de peleas políticas internas (Modelo III).
+* **Ciclo OODA (Boyd):** Evalúa la velocidad de reacción: Observar, Orientar, Decidir, Actuar. Quien completa el ciclo más rápido, gana.
+* **Sherman Kent (Calidad de Inteligencia):** **AUDITORÍA.** Detecta lenguaje ambiguo, confusión entre Capacidad e Intención, y politización del informe.
+
+### 🌐 BLOQUE 7: CIBERINTELIGENCIA
+* **Cyber Kill Chain:** Desglosa ataques digitales en fases (Reconocimiento -> Entrega -> Explotación).
+* **Modelo Diamante:** Relaciona al Adversario con su Infraestructura, Capacidades y Víctimas.
+
+### 🧠 BLOQUE 8: PSICOLOGÍA Y MENTE
+* **Perfilado Oscuro (Dark Triad & MICE):** Evalúa líderes por Narcisismo/Psicopatía y busca motivos de traición (Dinero, Ideología, Coerción, Ego).
+* **Propaganda (Goebbels, Bernays, Sunstein):**
+    * *Goebbels:* Principios de simplificación y repetición.
+    * *Bernays:* Ingeniería del consentimiento mediante "autoridad de terceros".
+    * *Sunstein:* Viralidad de rumores y cámaras de eco.
+    * *Key:* Seducción subliminal y ataques al subconsciente.
+
+### 🔮 BLOQUE 9: PROSPECTIVA (FUTUROS)
+* **Michel Godet:** Construcción de escenarios. Distingue variables motrices (causas) de dependientes (síntomas) y define el juego de actores.
+* **Cisnes Negros (Taleb):** Identifica eventos improbables de alto impacto o amenazas obvias ignoradas (Rinocerontes Grises).
+
+### 🕵️ BLOQUE 10: VERIFICACIÓN
+* **Triangulación (Cross-Check):** Técnica forense. Compara documentos para hallar contradicciones, silencios y cambios de narrativa.
+
+---
+*Documentación Oficial del Sistema StratIntel Solutions | Uso Confidencial*
 """
 
 # --- GESTIÓN DE ESTADO ---
@@ -359,6 +783,12 @@ if 'texto_analisis' not in st.session_state: st.session_state['texto_analisis'] 
 if 'origen_dato' not in st.session_state: st.session_state['origen_dato'] = "Ninguno"
 
 # --- FUNCIONES DE PROCESAMIENTO ---
+def buscar_en_web(query):
+    try:
+        search = DuckDuckGoSearchRun()
+        return search.run(query)
+    except Exception as e: return f"Error web: {e}"
+
 def procesar_archivos_pdf(archivos):
     texto_total = ""
     nombres = []
@@ -379,6 +809,59 @@ def procesar_archivos_docx(archivos):
         nombres.append(archivo.name)
     return texto_total, str(nombres)
 
+def obtener_texto_web(url):
+    try:
+        h = {'User-Agent': 'Mozilla/5.0'}
+        r = requests.get(url, headers=h, timeout=15)
+        s = BeautifulSoup(r.content, 'html.parser')
+        for script in s(["script", "style"]): script.extract()
+        return s.get_text(separator='\n')
+    except Exception as e: return f"Error: {e}"
+   
+def generar_esquema_graphviz(texto_analisis, api_key):
+    """Genera código DOT usando Groq."""
+    try:
+        client = Groq(api_key=api_key) # Cliente Groq
+        
+        prompt = f"""
+        ACTÚA COMO: Experto en Visualización de Datos de Inteligencia.
+        OBJETIVO: Convertir el siguiente análisis textual en un DIAGRAMA DE RED (DOT Graphviz).
+        
+        INSTRUCCIONES:
+        1. Identifica: Actores clave y sus relaciones.
+        2. Genera SOLO el código DOT. Sin markdown (```), sin explicaciones.
+        
+        ESTILO:
+        digraph G {{
+            rankdir=LR; 
+            node [shape=box, style="filled,rounded", color="#1f2937", fillcolor="#f3f4f6", fontname="Helvetica", fontsize=10]; 
+            edge [fontname="Helvetica", fontsize=8, color="#4b5563"];
+        }}
+        
+        TEXTO BASE:
+        {texto_analisis[:15000]}
+        """
+        
+        # Llamada a Groq
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": "Eres un generador de código Graphviz DOT estricto."},
+                {"role": "user", "content": prompt}
+            ],
+            model="llama3-70b-8192", # Usamos el modelo grande para mejor lógica visual
+            temperature=0.1, # Creatividad baja para no romper el código
+        )
+        
+        # Limpieza
+        codigo_dot = chat_completion.choices[0].message.content
+        codigo_dot = codigo_dot.replace("```dot", "").replace("```", "").replace("DOT", "").strip()
+        
+        grafico = graphviz.Source(codigo_dot)
+        return grafico, None
+        
+    except Exception as e:
+        return None, f"Error visual: {e}"
+
 # --- FUNCIONES DE REPORTE ---
 def limpiar_texto(t):
     if not t: return ""
@@ -389,7 +872,7 @@ def limpiar_texto(t):
 class PDFReport(FPDF):
     def header(self):
         self.set_font('Arial', 'B', 12)
-        self.cell(0, 10, 'StratIntel Report V16', 0, 1, 'C')
+        self.cell(0, 10, 'StratIntel Report', 0, 1, 'C')
         self.ln(5)
     def footer(self):
         self.set_y(-15)
@@ -399,11 +882,11 @@ class PDFReport(FPDF):
 def crear_pdf(texto, tecnicas, fuente):
     pdf = PDFReport()
     pdf.add_page()
-    pdf.set_font("Arial", "B", 10)
-    pdf.multi_cell(0, 5, limpiar_texto(f"Fuente: {fuente}\nTécnicas: {tecnicas}"))
+    pdf.set_font("Arial", "B", 12)
+    pdf.multi_cell(0, 7, limpiar_texto(f"Fuente: {fuente}\nTécnicas: {tecnicas}"))
     pdf.ln(5)
-    pdf.set_font("Arial", "", 10)
-    pdf.multi_cell(0, 5, limpiar_texto(texto))
+    pdf.set_font("Arial", "", 12)
+    pdf.multi_cell(0, 7, limpiar_texto(texto))
     return pdf.output(dest='S').encode('latin-1', 'replace')
 
 def crear_word(texto, tecnicas, fuente):
@@ -449,7 +932,7 @@ st.title("♟️ StratIntel Solutions | División de Análisis")
 st.markdown("**Sistema de Inteligencia Estratégica (DSS)**")
 
 # CARGA
-t1, t2, t3, t_ayuda = st.tabs(["📂 PDFs", "📝 DOCXs", "✍️ Manual", "ℹ️ Ayuda"])
+t1, t2, t3, t4, t_ayuda = st.tabs(["📂 PDFs", "📝 DOCXs", "🌐 Web", "✍️ Manual", "ℹ️ Ayuda"])
 with t1:
     f = st.file_uploader("PDFs", type="pdf", accept_multiple_files=True)
     if f and st.button("Procesar PDF"):
@@ -459,6 +942,9 @@ with t2:
     if f and st.button("Procesar DOCX"):
         t, n = procesar_archivos_docx(f); st.session_state['texto_analisis']=t; st.session_state['origen_dato']=f"DOCXs: {n}"; st.success(f"✅ {len(f)}")
 with t3:
+    u = st.text_input("URL"); 
+    if st.button("Web"): st.session_state['texto_analisis']=obtener_texto_web(u); st.session_state['origen_dato']=f"Web: {u}"; st.success("OK")
+with t4:
     m = st.text_area("Manual")
     if st.button("Fijar"): st.session_state['texto_analisis']=m; st.session_state['origen_dato']="Manual"; st.success("OK")
 
@@ -480,7 +966,9 @@ st.markdown("---")
 if st.session_state['texto_analisis']:
     with st.expander(f"Fuente Activa: {st.session_state['origen_dato']}"): st.write(st.session_state['texto_analisis'][:1000])
 
-# EJECUCIÓN
+# ==========================================
+# 🚀 EJECUCIÓN DE MISIÓN
+# ==========================================
 st.header("Generación de Informe")
 
 if not st.session_state['api_key'] or not st.session_state['texto_analisis']:
@@ -490,7 +978,7 @@ else:
     with c1:
         if not tecnicas_seleccionadas: st.info("👈 Selecciona técnicas.")
         
-        # --- SELECTOR DE PROFUNDIDAD CON MODO OPERACIONAL ---
+        # --- SELECTOR DE PROFUNDIDAD ---
         profundidad = st.radio(
             "Nivel de Profundidad:", 
             ["🔍 Estratégico (Resumen)", "🎯 Táctico (Todas las preguntas)", "⚙️ Operacional (Selección Específica)"],
@@ -502,7 +990,6 @@ else:
         if "Operacional" in profundidad and tecnicas_seleccionadas:
             st.info("👇 Selecciona los vectores de análisis:")
             for tec in tecnicas_seleccionadas:
-                # Obtenemos las preguntas de TU base de datos exacta
                 qs = DB_CONOCIMIENTO.get(tec, {}).get("preguntas", [])
                 if qs:
                     sel = st.multiselect(f"Preguntas para {tec}:", qs)
@@ -510,98 +997,160 @@ else:
                 else:
                     st.warning(f"{tec} no tiene preguntas predefinidas.")
         
+        usar_internet = st.checkbox("🌐 Búsqueda Web")
         pir = st.text_area("PIR (Opcional):", height=100)
 
     with c2:
+        # BOTÓN PRINCIPAL
         if st.button("🚀 EJECUTAR MISIÓN", type="primary", use_container_width=True, disabled=len(tecnicas_seleccionadas)==0):
             try:
-                genai.configure(api_key=st.session_state['api_key'])
-                model = genai.GenerativeModel(MODELO_ACTUAL)
+                # 1. LIMPIEZA
+                if 'codigo_dot_mapa' in st.session_state: del st.session_state['codigo_dot_mapa']
+                if 'res' in st.session_state: del st.session_state['res']
+
+                # 2. CONFIGURACIÓN GROQ
+                client = Groq(api_key=st.session_state['api_key'])
                 ctx = st.session_state['texto_analisis']
-                         
-                # BUCLE DE ANÁLISIS
-                informe_final = f"# INFORME\nFECHA: {datetime.datetime.now().strftime('%d/%m/%Y')}\nFUENTE: {st.session_state['origen_dato']}\n\n"
-                progreso = st.progress(0)
+
+                INSTRUCCIONES_ESTILO = """
+                DIRECTRICES:
+                1. EXTENSIÓN: Informe exhaustivo, PROHIBIDO RESUMIR. Mínimo 3-4 párrafos por punto.
+                2. RIGOR: Citas textuales, matices teóricos y tono de inteligencia militar.
+                3. IDIOMA: Español Profesional.
+                """
                 
+                # 3. BÚSQUEDA WEB (Igual que antes)
+                contexto_web = ""
+                if usar_internet:
+                    with st.status("🌐 Buscando...", expanded=True) as s:
+                        q = f"{pir} {st.session_state['origen_dato']}" if pir else f"Análisis {st.session_state['origen_dato']}"
+                        res_web = buscar_en_web(q)
+                        contexto_web = f"\nINFO WEB:\n{res_web}\n"
+                        s.update(label="✅ Hecho", state="complete", expanded=False)
+                
+                # 4. INICIALIZACIÓN
+                informe_final = f"# INFORME DE INTELIGENCIA\nFECHA: {datetime.datetime.now().strftime('%d/%m/%Y')}\nFUENTE: {st.session_state['origen_dato']}\n\n"
+                progreso = st.progress(0)
+                                
+                # 5. BUCLE DE ANÁLISIS
                 for i, tec in enumerate(tecnicas_seleccionadas):
                     st.caption(f"Analizando: {tec}...")
                     
-                    # LÓGICA DE INYECCIÓN DE PREGUNTAS
+                    # Lógica de Preguntas (Igual que antes)
                     instruccion_preguntas = ""
-                    
                     if "Táctico" in profundidad:
                         qs = DB_CONOCIMIENTO.get(tec, {}).get("preguntas", [])
-                        if qs:
-                            lista = "\n".join([f"- {p}" for p in qs])
-                            instruccion_preguntas = f"\n\nOBLIGATORIO: Responde DETALLADAMENTE a TODAS estas preguntas del marco teórico:\n{lista}"
-                        else:
-                            instruccion_preguntas = "\n\nINSTRUCCIÓN: Realiza un análisis táctico detallado."
-
+                        lista = "\n".join([f"- {p}" for p in qs]) if qs else ""
+                        instruccion_preguntas = f"\nOBLIGATORIO: Responde:\n{lista}" if qs else "\nAnálisis táctico detallado."
                     elif "Operacional" in profundidad:
                         qs_selec = preguntas_manuales.get(tec, [])
-                        if qs_selec:
-                            lista = "\n".join([f"- {p}" for p in qs_selec])
-                            instruccion_preguntas = f"\n\nOBLIGATORIO: Centra el análisis EXCLUSIVAMENTE en responder estas preguntas seleccionadas:\n{lista}"
-                        else:
-                            instruccion_preguntas = "\n\n(NOTA: El usuario no seleccionó preguntas específicas. Realiza un análisis general de la técnica)."
-
-                    else: # Estratégico
-                        instruccion_preguntas = "\n\nINSTRUCCIÓN: Realiza un análisis estratégico general, fluido y ejecutivo (Resumen Global)."
+                        lista = "\n".join([f"- {p}" for p in qs_selec]) if qs_selec else ""
+                        instruccion_preguntas = f"\nOBLIGATORIO: Responde SOLO:\n{lista}" if qs_selec else "\nAnálisis general."
+                    else:
+                        instruccion_preguntas = "\nAnálisis estratégico ejecutivo."
 
                     prompt = f"""
-                    ACTÚA COMO: Analista de Inteligencia Senior y Experto en Relaciones Internacionales.
+                    ACTÚA COMO: Analista de Inteligencia Senior y Experto en relaciones internacionales.
                     METODOLOGÍA: {tec}
-                    PIR (Requerimiento de Inteligencia): {pir}
-                    
+                    PIR: {pir}
+                    {INSTRUCCIONES_ESTILO}
                     {instruccion_preguntas}
                     
-                    CONTEXTO DOCUMENTAL:
-                    {ctx}
-                                        
-                    FORMATO: Académico, riguroso, citar fuentes del texto.
+                    CONTEXTO:
+                    {ctx[:60000]} 
+                    {contexto_web}
                     """
+                    # NOTA: Llama 3 soporta mucho contexto, pero cortamos a 60k caracteres por seguridad en la versión free.
                     
-                    # RETRY LOGIC
-                    intentos = 0
-                    exito = False
-                    while intentos < 3 and not exito:
-                        try:
-                            res = model.generate_content(prompt, generation_config=genai.types.GenerationConfig(temperature=temp))
-                            informe_final += f"\n\n## 📌 {tec}\n{res.text}\n\n---\n"
-                            exito = True
-                        except Exception as e:
-                            if "429" in str(e):
-                                st.warning(f"⚠️ Tráfico alto (429). Esperando 30s... (Intento {intentos+1})")
-                                time.sleep(30)
-                                intentos += 1
-                            else:
-                                st.error(f"Error: {e}")
-                                break
+                    try:
+                        # LLAMADA A GROQ
+                        chat_completion = client.chat.completions.create(
+                            messages=[
+                                {"role": "system", "content": "Eres un oficial de inteligencia estratégica."},
+                                {"role": "user", "content": prompt}
+                            ],
+                            model=MODELO_ACTUAL,
+                            temperature=temp,
+                            max_tokens=7000, # Llama permite respuestas largas
+                        )
+                        
+                        respuesta = chat_completion.choices[0].message.content
+                        informe_final += f"\n\n## 📌 {tec}\n{respuesta}\n\n---\n"
+                        
+                    except Exception as e:
+                        st.error(f"Error en {tec}: {e}")
+                        break
 
                     progreso.progress((i + 1) / len(tecnicas_seleccionadas))
-                    time.sleep(5) 
-                
+                    # Groq es tan rápido que no necesitamos time.sleep(), pero dejamos 0.5s por elegancia visual
+                    time.sleep(0.5) 
+
+                # 6. GUARDADO
                 st.session_state['res'] = informe_final
                 st.session_state['tecnicas_usadas'] = ", ".join(tecnicas_seleccionadas)
-                st.success("✅ Misión Completada")
-                st.markdown(informe_final)
+                st.success("✅ Misión Cumplida")
+                st.rerun()
 
-            except Exception as e: st.error(f"Error: {e}")
+            except Exception as e: st.error(f"Error Fatal: {e}")
 
-if 'res' in st.session_state:
+# ==========================================================
+# 🏁 BLOQUE PERSISTENTE (VISUALIZACIÓN Y DESCARGAS)
+# ==========================================================
+if 'res' in st.session_state and st.session_state['res']:
+    
+    # 1. MOSTRAR EL INFORME DE TEXTO
     st.markdown("---")
+    st.markdown(st.session_state['res'])
+    
+    # 2. GENERACIÓN DEL GRÁFICO (Solo si no existe en memoria)
+    if 'codigo_dot_mapa' not in st.session_state:
+        st.markdown("---")
+        st.subheader("🕸️ Mapa de Relaciones (Visualización)")
+        with st.spinner("🛰️ Trazando red de actores y conflictos..."):
+            # Llamamos a la función de grafo (Asegúrate de que la función use el modelo correcto internamente)
+            grafo, error = generar_esquema_graphviz(st.session_state['res'], st.session_state['api_key'])
+            if grafo:
+                st.session_state['codigo_dot_mapa'] = grafo.source 
+                st.rerun() # Recargamos para mostrar el gráfico ya guardado
+            elif error:
+                st.error(f"Error generando mapa: {error}")
+
+    # 3. VISUALIZACIÓN Y DESCARGA (Usando la memoria)
+    if 'codigo_dot_mapa' in st.session_state:
+        try:
+            # Reconstruimos el gráfico desde la memoria
+            grafo_final = graphviz.Source(st.session_state['codigo_dot_mapa'])
+            
+            st.markdown("---")
+            st.subheader("🕸️ Mapa de Relaciones")
+            st.graphviz_chart(grafo_final, use_container_width=True)
+            
+            # --- ZONA DE DESCARGA ---
+            st.markdown("### 📥 Exportar Mapa")
+            c_d1, c_d2 = st.columns(2)
+            
+            # Renderizar a bytes
+            try:
+                img_png = grafo_final.pipe(format='png')
+                with c_d1:
+                    st.download_button("💾 Descargar PNG", img_png, "stratintel_map.png", "image/png", use_container_width=True)
+            except: c_d1.warning("⚠️ Instala Graphviz para PNG")
+
+            try:
+                pdf_bytes = grafo_final.pipe(format='pdf')
+                with c_d2:
+                    st.download_button("📄 Descargar PDF", pdf_bytes, "stratintel_map.pdf", "application/pdf", use_container_width=True)
+            except: pass
+
+        except Exception as e:
+            st.warning(f"Error visual: {e}")
+
+    # 4. BOTONES DEL INFORME DE TEXTO
+    st.markdown("---")
+    st.markdown("### 📥 Exportar Informe Escrito")
     c1, c2 = st.columns(2)
-    c1.download_button("Descargar Word", crear_word(st.session_state['res'], st.session_state['tecnicas_usadas'], st.session_state['origen_dato']), "Reporte.docx")
-    try: c2.download_button("Descargar PDF", bytes(crear_pdf(st.session_state['res'], st.session_state['tecnicas_usadas'], st.session_state['origen_dato'])), "Reporte.pdf")
+    c1.download_button("Descargar Word", crear_word(st.session_state['res'], st.session_state.get('tecnicas_usadas','Varios'), st.session_state['origen_dato']), "Reporte.docx", use_container_width=True)
+    try: 
+        c2.download_button("Descargar PDF", bytes(crear_pdf(st.session_state['res'], st.session_state.get('tecnicas_usadas','Varios'), st.session_state['origen_dato'])), "Reporte.pdf", use_container_width=True)
     except: pass
-
-
-
-
-
-
-
-
-
-
 
