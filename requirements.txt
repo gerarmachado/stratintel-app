@@ -1,11 +1,13 @@
 streamlit
 google-generativeai
 openai
-graphviz
-beautifulsoup4
+pypdf
 python-docx
 fpdf
 requests
+beautifulsoup4
 langchain-community
 duckduckgo-search
+graphviz
+
 
