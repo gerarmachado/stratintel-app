@@ -1067,42 +1067,55 @@ else:
                                 model = genai.GenerativeModel("gemini-2.5-flash")
                                 res = model.generate_content(prompt)
                                 texto_gen = res.text
+                            # === OPCIÓN B: OPENROUTER (BLINDADO) ===
                             else:
-                                # 1. Verificación manual de la llave
-                                if not api_key_final or len(api_key_final) < 10:
-                                    raise ValueError("La API Key de OpenRouter parece vacía o inválida.")
+                                # 1. INTENTO DE CARGA (Secrets vs Manual)
+                                # Intentamos leer el secreto de nuevo aquí mismo para asegurar
+                                clave_final = st.secrets.get("OPENROUTER_API_KEY", "").strip()
+                                
+                                # Si viene vacía de los secrets, usamos la que hayas puesto en el sidebar
+                                if not clave_final:
+                                    clave_final = api_key_final
+                                
+                                # 2. VALIDACIÓN VISUAL (CHIVATO)
+                                if not clave_final or len(clave_final) < 10:
+                                    st.error(f"❌ ERROR CRÍTICO: La clave está llegando vacía o incompleta.")
+                                    # Fallback de emergencia: Pídela aquí mismo si todo falló
+                                    clave_final = st.text_input(f"🆘 Pega la key aquí para salvar la misión {tec}:", type="password", key=f"emergency_key_{i}")
+                                    if not clave_final: st.stop()
+                                else:
+                                    # Esto te confirmará que SÍ la leyó
+                                    st.caption(f"🔑 Autorizando con clave: {clave_final[:5]}...*****")
 
-                                # 2. Petición HTTP Directa (Sin librería OpenAI)
+                                # 3. PETICIÓN HTTP DIRECTA
                                 headers = {
-                                    "Authorization": f"Bearer {api_key_final}",
+                                    "Authorization": f"Bearer {clave_final}",
                                     "Content-Type": "application/json",
-                                    "HTTP-Referer": "https://stratintel.app", # Requerido por OpenRouter
+                                    "HTTP-Referer": "https://stratintel.app",
                                     "X-Title": "StratIntel OS"
                                 }
                                 
                                 data = {
-                                    "model": "deepseek/deepseek-r1:free", # El modelo gratis
+                                    "model": "deepseek/deepseek-r1:free", 
                                     "messages": [{"role": "user", "content": prompt}]
                                 }
                                 
-                                # Hacemos el envío manual
                                 response = requests.post(
                                     "https://openrouter.ai/api/v1/chat/completions",
                                     headers=headers,
                                     json=data,
-                                    timeout=120 # Le damos 2 minutos porque DeepSeek piensa mucho
+                                    timeout=120
                                 )
                                 
-                                # 3. Procesamos la respuesta manual
                                 if response.status_code == 200:
                                     respuesta_json = response.json()
-                                    texto_gen = respuesta_json['choices'][0]['message']['content']
+                                    # A veces la respuesta viene anidada diferente, prevenimos error
+                                    if 'choices' in respuesta_json:
+                                        texto_gen = respuesta_json['choices'][0]['message']['content']
+                                    else:
+                                        texto_gen = f"Respuesta inesperada: {respuesta_json}"
                                 else:
-                                    # Si falla, mostramos el error exacto que devuelve el servidor
-                                    texto_gen = f"Error {response.status_code}: {response.text}"
-                                
-                        except Exception as e:
-                            texto_gen = f"Error generando: {str(e)}"
+                                    texto_gen = f"⚠️ Error del Servidor ({response.status_code}): {response.text}"
 
                         firma = f"\n\n> *Análisis generado vía StratIntel Solutions OS ({PROVEEDOR}) | Metodología: {tec}*"
                         informe_final += f"\n\n## 📌 {tec}\n{texto_gen}{firma}\n\n---\n"
@@ -1143,6 +1156,7 @@ if 'res' in st.session_state and st.session_state['res']:
     try:
         c2.download_button("Descargar PDF", bytes(crear_pdf(st.session_state['res'], st.session_state.get('tecnicas_usadas',''), st.session_state['origen_dato'])), "Reporte.pdf", use_container_width=True)
     except: pass
+
 
 
 
