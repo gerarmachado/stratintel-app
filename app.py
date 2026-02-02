@@ -909,13 +909,20 @@ def crear_word(texto, tecnicas, fuente):
 # ==========================================
 # 🖥️ INTERFAZ PRINCIPAL
 # ==========================================
-st.sidebar.title("♟️ StratIntel OS")
-st.sidebar.caption("v2.0 | Hybrid Engine")
+st.sidebar.title("♟️ StratIntel Solutions OS")
+st.sidebar.caption("v2.1 | Hybrid Engine")
 st.sidebar.markdown("---")
 
-# CARGA SEGURA DE CLAVES (Sin crashear si faltan)
-google_key_auto = st.secrets.get("GOOGLE_API_KEY", "")
-router_key_auto = st.secrets.get("OPENROUTER_API_KEY", "")
+# --- CARGA INTELIGENTE Y DEPURA DE CLAVES ---
+# 1. Leemos y limpiamos espacios vacíos con .strip()
+google_key_auto = st.secrets.get("GOOGLE_API_KEY", "").strip()
+router_key_auto = st.secrets.get("OPENROUTER_API_KEY", "").strip()
+
+# 2. Chivato de Estado (Solo te dice si la ve o no, no muestra la clave)
+if router_key_auto:
+    st.sidebar.success(f"✅ OpenRouter: Cargada ({router_key_auto[:5]}...)")
+else:
+    st.sidebar.warning("⚠️ OpenRouter: No detectada en Secrets")
 
 # SELECTOR DE MISION
 st.sidebar.subheader("🎯 Misión")
@@ -1108,6 +1115,7 @@ if 'res' in st.session_state and st.session_state['res']:
     try:
         c2.download_button("Descargar PDF", bytes(crear_pdf(st.session_state['res'], st.session_state.get('tecnicas_usadas',''), st.session_state['origen_dato'])), "Reporte.pdf", use_container_width=True)
     except: pass
+
 
 
 
