@@ -11,7 +11,7 @@ import time
 import datetime
 from langchain_community.tools import DuckDuckGoSearchRun
 import graphviz
-import pypdf # AGREGE ESTA LIBRERÍA QUE FALTABA
+import pypdf
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="StratIntel Solutions OS", page_icon="♟️", layout="wide")
@@ -866,303 +866,318 @@ def generar_esquema_graphviz(texto_analisis, api_key):
     except Exception as e:
         return None, f"Error visual: {e}"
 
-# --- FUNCIONES DE REPORTE ---
+# ==========================================
+# 🔐 LOGIN Y SEGURIDAD
+# ==========================================
+def check_password():
+    if "passwords" not in st.secrets:
+        return True # Modo desarrollo si no hay secrets
+
+    def password_entered():
+        if st.session_state["username"] in st.secrets["passwords"] and \
+           st.session_state["password"] == st.secrets["passwords"][st.session_state["username"]]:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]
+        else:
+            st.session_state["password_correct"] = False
+
+    if st.session_state.get("password_correct", False):
+        return True
+
+    st.markdown("## ♟️ StratIntel OS: Acceso")
+    c1, c2 = st.columns([1,2])
+    with c1:
+        st.text_input("Usuario", key="username")
+        st.text_input("Contraseña", type="password", on_change=password_entered, key="password")
+    
+    if "password_correct" in st.session_state and not st.session_state["password_correct"]:
+        st.error("❌ Credenciales inválidas")
+    return False
+
+if not check_password():
+    st.stop()
+
+# ==========================================
+# 🛠️ FUNCIONES UTILITARIAS
+# ==========================================
 def limpiar_texto(t):
     if not t: return ""
-    reps = {"✨": "", "🚀": "", "⚠️": "[!]", "✅": "[OK]", "🛡️": "", "🔒": "", "🎖️": "", "♟️": "", "⚖️": ""}
-    for k,v in reps.items(): t = t.replace(k,v)
     return t.encode('latin-1', 'replace').decode('latin-1')
 
-class PDFReport(FPDF):
-    def header(self):
-        self.set_font('Arial', 'B', 12)
-        self.cell(0, 10, 'StratIntel Report', 0, 1, 'C')
-        self.ln(5)
-    def footer(self):
-        self.set_y(-15)
-        self.set_font('Arial', 'I', 7)
-        self.cell(0, 10, 'Generado por IA. Uso Reservado.', 0, 0, 'C')
+def buscar_en_web(query):
+    try:
+        search = DuckDuckGoSearchRun()
+        return search.run(query)
+    except Exception as e: return f"Error web: {e}"
 
-def crear_pdf(texto, tecnicas, fuente):
-    pdf = PDFReport()
-    pdf.add_page()
-    pdf.set_font("Arial", "B", 12)
-    pdf.multi_cell(0, 7, limpiar_texto(f"Fuente: {fuente}\nTécnicas: {tecnicas}"))
-    pdf.ln(5)
-    pdf.set_font("Arial", "", 12)
-    pdf.multi_cell(0, 7, limpiar_texto(texto))
-    return pdf.output(dest='S').encode('latin-1', 'replace')
+def procesar_archivos(archivos, tipo):
+    texto_total = ""
+    nombres = []
+    for archivo in archivos:
+        try:
+            if tipo == "pdf":
+                reader = pypdf.PdfReader(archivo)
+                contenido = "".join([p.extract_text() for p in reader.pages])
+            elif tipo == "docx":
+                doc = Document(archivo)
+                contenido = "\n".join([para.text for para in doc.paragraphs])
+            
+            texto_total += f"\n--- DOC: {archivo.name} ---\n{contenido}\n"
+            nombres.append(archivo.name)
+        except Exception as e:
+            st.error(f"Error leyendo {archivo.name}: {e}")
+            
+    return texto_total, str(nombres)
 
-def crear_word(texto, tecnicas, fuente):
-    doc = Document()
-    doc.add_heading('StratIntel Intelligence Report', 0)
-    doc.add_paragraph(f"Fuente: {fuente}").bold = True
-    doc.add_paragraph(f"Técnicas: {tecnicas}").bold = True
-    for l in texto.split('\n'):
-        if l.startswith('#'): doc.add_heading(l.replace('#','').strip(), level=2)
-        else: doc.add_paragraph(l)
-    aviso = doc.add_paragraph()
-    aviso.add_run("\n\n------------------\nAVISO: Generado por IA.").font.size = 8
-    b = BytesIO(); doc.save(b); b.seek(0)
-    return b
+def obtener_texto_web(url):
+    try:
+        h = {'User-Agent': 'Mozilla/5.0'}
+        r = requests.get(url, headers=h, timeout=15)
+        s = BeautifulSoup(r.content, 'html.parser')
+        for script in s(["script", "style"]): script.extract()
+        return s.get_text(separator='\n')
+    except Exception as e: return f"Error: {e}"
+
+def generar_grafo(texto, api_key):
+    if not api_key: return None, "Falta Google Key"
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-2.5-flash")
+        prompt = f"""
+        CREA UN GRAFO 'DOT' (GRAPHVIZ) DEL SIGUIENTE TEXTO.
+        REGLAS:
+        - Título arriba: label="TITULO RESUMEN"
+        - Nodos: Actores (Naranja #ffcc99), Amenazas (Rojo #ffcccc), Conceptos (Azul #ccddff).
+        - SOLO CÓDIGO DOT.
+        
+        TEXTO: {texto[:10000]}
+        """
+        res = model.generate_content(prompt)
+        dot = res.text.replace("```dot", "").replace("```", "").replace("DOT", "").strip()
+        return graphviz.Source(dot), None
+    except Exception as e: return None, str(e)
 
 # ==========================================
 # 🖥️ INTERFAZ PRINCIPAL
 # ==========================================
-st.sidebar.title("♟️ StratIntel Solutions OS")
-st.sidebar.caption("v2.1 | Hybrid Engine")
-st.sidebar.markdown("---")
+st.sidebar.title("♟️ StratIntel OS")
+st.sidebar.caption("v3.0 | Stable Core")
 
-# --- CARGA INTELIGENTE Y DEPURA DE CLAVES ---
-# 1. Leemos y limpiamos espacios vacíos con .strip()
-google_key_auto = st.secrets.get("GOOGLE_API_KEY", "").strip()
-router_key_auto = st.secrets.get("OPENROUTER_API_KEY", "").strip()
+# --- GESTIÓN DE ESTADO ---
+if 'texto_analisis' not in st.session_state: st.session_state['texto_analisis'] = ""
+if 'origen_dato' not in st.session_state: st.session_state['origen_dato'] = "Sin datos"
+if 'res' not in st.session_state: st.session_state['res'] = ""
 
-# 2. Chivato de Estado (Solo te dice si la ve o no, no muestra la clave)
-if router_key_auto:
-    st.sidebar.success(f"✅ OpenRouter: Cargada ({router_key_auto[:5]}...)")
-else:
-    st.sidebar.warning("⚠️ OpenRouter: No detectada en Secrets")
+# --- CARGA DE CLAVES ---
+key_google = st.secrets.get("GOOGLE_API_KEY", "").strip()
+key_router = st.secrets.get("OPENROUTER_API_KEY", "").strip()
 
-# SELECTOR DE MISION
-st.sidebar.subheader("🎯 Misión")
-tecnicas_seleccionadas = st.sidebar.multiselect(
-    "Técnicas (Máx 3):",
-    options=list(DB_CONOCIMIENTO.keys()),
-    max_selections=3
-)
-temp = st.sidebar.slider("Creatividad", 0.0, 1.0, 0.4)
-if st.sidebar.button("🔒 Salir"): del st.session_state["password_correct"]; st.rerun()
-
-st.title("♟️ StratIntel Solutions | División de Análisis")
-
-# PESTAÑAS DE CARGA
-t1, t2, t3, t4 = st.tabs(["📂 PDFs", "📝 DOCXs", "🌐 Web", "✍️ Manual"])
+# --- INPUT DE DATOS ---
+st.subheader("1. Ingesta de Datos")
+t1, t2, t3, t4 = st.tabs(["📂 PDF", "📝 DOCX", "🌐 WEB", "✍️ TXT"])
 with t1:
     f = st.file_uploader("PDFs", type="pdf", accept_multiple_files=True)
     if f and st.button("Procesar PDF"):
-        t, n = procesar_archivos_pdf(f); st.session_state['texto_analisis']=t; st.session_state['origen_dato']=f"PDFs: {n}"; st.success(f"✅ {len(f)}")
+        t, n = procesar_archivos(f, "pdf")
+        st.session_state['texto_analisis'] = t
+        st.session_state['origen_dato'] = f"PDFs: {n}"
+        st.success("Cargado")
 with t2:
     f = st.file_uploader("DOCXs", type="docx", accept_multiple_files=True)
     if f and st.button("Procesar DOCX"):
-        t, n = procesar_archivos_docx(f); st.session_state['texto_analisis']=t; st.session_state['origen_dato']=f"DOCXs: {n}"; st.success(f"✅ {len(f)}")
+        t, n = procesar_archivos(f, "docx")
+        st.session_state['texto_analisis'] = t
+        st.session_state['origen_dato'] = f"DOCXs: {n}"
+        st.success("Cargado")
 with t3:
     u = st.text_input("URL")
-    if st.button("Web"): st.session_state['texto_analisis']=obtener_texto_web(u); st.session_state['origen_dato']=f"Web: {u}"; st.success("OK")
+    if st.button("Extraer Web"):
+        st.session_state['texto_analisis'] = obtener_texto_web(u)
+        st.session_state['origen_dato'] = f"Web: {u}"
+        st.success("Cargado")
 with t4:
     m = st.text_area("Texto Manual")
-    if st.button("Fijar Texto"): st.session_state['texto_analisis']=m; st.session_state['origen_dato']="Manual"; st.success("OK")
+    if st.button("Usar Texto"):
+        st.session_state['texto_analisis'] = m
+        st.session_state['origen_dato'] = "Manual"
+        st.success("Cargado")
+
+if st.session_state['texto_analisis']:
+    st.info(f"Fuente activa: {st.session_state['origen_dato']} ({len(st.session_state['texto_analisis'])} caracteres)")
 
 st.markdown("---")
-if st.session_state['texto_analisis']:
-    with st.expander(f"Fuente Activa: {st.session_state['origen_dato']}"): st.write(st.session_state['texto_analisis'][:1000])
+
+# --- CONFIGURACIÓN DE MISIÓN ---
+c_conf1, c_conf2 = st.columns(2)
+with c_conf1:
+    st.subheader("2. Configuración")
+    tecnicas = st.multiselect("Técnicas de Análisis", list(DB_CONOCIMIENTO.keys()))
+    profundidad = st.select_slider("Profundidad", options=["Estratégico (Resumen)", "Táctico (Detallado)", "Operacional (Manual)"])
+    usar_web = st.checkbox("Búsqueda Web Complementaria")
+    pir = st.text_area("PIR (Requerimiento Prioritario)", height=70)
+
+with c_conf2:
+    st.subheader("3. Motor de IA")
+    motor = st.radio("Selecciona Inteligencia:", ["Google Gemini", "DeepSeek (OpenRouter)"])
+    
+    # Lógica de Clave Manual (Si falla secrets)
+    key_final = ""
+    if "Google" in motor:
+        key_final = key_google if key_google else st.text_input("Clave Google:", type="password")
+    else:
+        key_final = key_router if key_router else st.text_input("Clave OpenRouter:", type="password")
 
 # ==========================================
-# 🚀 EJECUCIÓN HÍBRIDA (EL CEREBRO)
+# 🚀 EJECUCIÓN (LÓGICA BLINDADA)
 # ==========================================
-st.header("Generación de Informe")
-st.write(f"DEBUG: Clave OpenRouter detectada: {len(router_key_auto)} caracteres")
+if st.button("🚀 EJECUTAR MISIÓN", type="primary", use_container_width=True):
+    if not st.session_state['texto_analisis']:
+        st.warning("⚠️ Carga un documento primero.")
+        st.stop()
+    if not key_final:
+        st.error("⚠️ Falta la API Key.")
+        st.stop()
+    if not tecnicas:
+        st.warning("⚠️ Selecciona al menos una técnica.")
+        st.stop()
 
-if not st.session_state['texto_analisis']:
-    st.warning("⚠️ Carga datos para comenzar.")
-else:
-    c1, c2 = st.columns([1, 2])
-    with c1:
-        if not tecnicas_seleccionadas: st.info("👈 Selecciona técnicas.")
-        
-        profundidad = st.radio(
-            "Profundidad:", 
-            ["🔍 Estratégico", "🎯 Táctico", "⚙️ Operacional"],
-            help="Estratégico: Resumen. Táctico: Completo. Operacional: Manual."
-        )
-        
-        # Selección Manual
-        preguntas_manuales = {}
-        if "Operacional" in profundidad and tecnicas_seleccionadas:
-            for tec in tecnicas_seleccionadas:
-                qs = DB_CONOCIMIENTO.get(tec, {}).get("preguntas", [])
-                if qs:
-                    sel = st.multiselect(f"Q: {tec}:", qs)
-                    preguntas_manuales[tec] = sel
-        
-        usar_internet = st.checkbox("🌐 Búsqueda Web")
-        pir = st.text_area("PIR (Opcional):", height=80)
+    # Inicio del proceso
+    informe = f"# INFORME\nFECHA: {datetime.datetime.now().strftime('%Y-%m-%d')}\nFUENTE: {st.session_state['origen_dato']}\nMOTOR: {motor}\n\n"
+    
+    # Contexto Web
+    ctx_web = ""
+    if usar_web:
+        with st.status("🌐 Buscando inteligencia externa..."):
+            ctx_web = buscar_en_web(f"{pir} {st.session_state['origen_dato']}")
+    
+    ctx_total = st.session_state['texto_analisis'] + "\n\n" + ctx_web
+    progreso = st.progress(0)
 
-    with c2:
-        # --- SELECTOR DE MOTOR ---
-        st.markdown("### 🧠 Motor de IA")
-        col_m1, col_m2 = st.columns(2)
-        with col_m1:
-            PROVEEDOR = st.radio("Proveedor:", ["Google Gemini", "DeepSeek (OpenRouter)"], label_visibility="collapsed")
-        with col_m2:
-            # Lógica de Claves Inteligente
-            api_key_final = ""
-            if "Google" in PROVEEDOR:
-                if google_key_auto:
-                    st.success("🔑 Google Key Detectada")
-                    api_key_final = google_key_auto
-                else:
-                    api_key_final = st.text_input("🔑 Pega tu Google Key:", type="password")
+    try:
+        for i, tec in enumerate(tecnicas):
+            st.caption(f"Procesando: {tec}...")
+            
+            # Construcción del Prompt
+            qs = DB_CONOCIMIENTO[tec].get("preguntas", [])
+            instruccion_q = "Responde:\n" + "\n".join([f"- {q}" for q in qs])
+            
+            prompt = f"""
+            ROL: Analista de Inteligencia Estratégica y Experto en Relaciones Internacionales.
+            TAREA: Aplicar metodología {tec}.
+            PIR: {pir}
+            INSTRUCCIÓN: {instruccion_q}
+            CONTEXTO: {ctx_total[:60000]}
+            FORMATO: Markdown profesional, subtítulos, viñetas. NO RESUMIR DEMASIADO.
+            """
+
+            # --- LLAMADA AL MOTOR ---
+            texto_generado = ""
+            
+            if "Google" in motor:
+                # GEMINI
+                genai.configure(api_key=key_final)
+                model_ia = genai.GenerativeModel("gemini-2.5-flash")
+                res_ia = model_ia.generate_content(prompt)
+                texto_generado = res_ia.text
+            
             else:
-                if router_key_auto:
-                    st.success("🔑 OpenRouter Key Detectada")
-                    api_key_final = router_key_auto
+                # DEEPSEEK (CONEXIÓN DIRECTA NUCLEAR)
+                headers = {
+                    "Authorization": f"Bearer {key_final}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://stratintel.app",
+                    "X-Title": "StratIntel OS"
+                }
+                data = {
+                    "model": "deepseek/deepseek-r1:free",
+                    "messages": [{"role": "user", "content": prompt}]
+                }
+                # Petición cruda para evitar errores de librería
+                r = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data, timeout=120)
+                
+                if r.status_code == 200:
+                    try:
+                        texto_generado = r.json()['choices'][0]['message']['content']
+                    except:
+                        texto_generado = f"Error formato JSON: {r.text}"
                 else:
-                    api_key_final = st.text_input("🔑 Pega OpenRouter Key:", type="password")
+                    texto_generado = f"Error {r.status_code}: {r.text}"
 
-        # BOTÓN EJECUTAR
-        if st.button("🚀 EJECUTAR MISIÓN", type="primary", use_container_width=True, disabled=len(tecnicas_seleccionadas)==0):
-            if not api_key_final:
-                st.error("❌ Falta la API Key para el motor seleccionado.")
-            else:
-                try:
-                    # Limpieza
-                    if 'codigo_dot_mapa' in st.session_state: del st.session_state['codigo_dot_mapa']
-                    if 'res' in st.session_state: del st.session_state['res']
-                    
-                    # Guardamos la key de Google en sesión SIEMPRE, porque se usa para el mapa visual
-                    if "Google" in PROVEEDOR: st.session_state['api_key'] = api_key_final
-                    elif google_key_auto: st.session_state['api_key'] = google_key_auto
+            informe += f"## 📌 {tec}\n{texto_generado}\n\n---\n"
+            progreso.progress((i+1)/len(tecnicas))
 
-                    # Configura Gemini por si acaso (para mapas)
-                    if st.session_state.get('api_key'):
-                        genai.configure(api_key=st.session_state['api_key'])
+        # Guardado exitoso
+        st.session_state['res'] = informe
+        st.session_state['tecnicas_usadas'] = str(tecnicas)
+        st.success("✅ Misión completada.")
+        st.rerun()
 
-                    ctx = st.session_state['texto_analisis']
-                    
-                    # Búsqueda Web
-                    contexto_web = ""
-                    if usar_internet:
-                        with st.status("🌐 Buscando...", expanded=True) as s:
-                            q = f"{pir} {st.session_state['origen_dato']}"
-                            res_web = buscar_en_web(q)
-                            contexto_web = f"\nINFO WEB:\n{res_web}\n"
-                            s.update(label="✅ Hecho", state="complete", expanded=False)
+    except Exception as e:
+        st.error(f"Error fatal durante la ejecución: {e}")
 
-                    informe_final = f"# INFORME\nFECHA: {datetime.datetime.now().strftime('%d/%m/%Y')}\nFUENTE: {st.session_state['origen_dato']}\nMOTOR: {PROVEEDOR}\n\n"
-                    progreso = st.progress(0)
-
-                    # BUCLE PRINCIPAL
-                    for i, tec in enumerate(tecnicas_seleccionadas):
-                        st.caption(f"Analizando: {tec}...")
-                        
-                        # Lógica de Prompt (Igual que siempre)
-                        instruccion = "Análisis Estratégico Ejecutivo."
-                        if "Táctico" in profundidad:
-                            qs = DB_CONOCIMIENTO.get(tec, {}).get("preguntas", [])
-                            if qs: instruccion = "Responde:\n" + "\n".join([f"- {p}" for p in qs])
-                        elif "Operacional" in profundidad:
-                            qs = preguntas_manuales.get(tec, [])
-                            if qs: instruccion = "Responde SOLO:\n" + "\n".join([f"- {p}" for p in qs])
-
-                        prompt = f"""
-                        ACTÚA COMO: Analista de Inteligencia y Experto en Relaciones Internacionales. METODOLOGÍA: {tec}. PIR: {pir}
-                        DIRECTRICES: Formato académico, BLUF, citar fuentes.
-                        {instruccion}
-                        CONTEXTO: {ctx[:60000]} {contexto_web}
-                        """
-
-                        texto_gen = ""
-                        
-                        # === INICIO DEL BLOQUE BLINDADO ===
-                        try:
-                            # OPCIÓN A: GOOGLE
-                            if "Google" in PROVEEDOR:
-                                model = genai.GenerativeModel("gemini-2.5-flash")
-                                res = model.generate_content(prompt)
-                                texto_gen = res.text
-                            
-                            # OPCIÓN B: OPENROUTER (SOLICITUD MANUAL)
-                            else:
-                                # 1. INTENTO DE CARGA
-                                clave_final = st.secrets.get("OPENROUTER_API_KEY", "").strip()
-                                if not clave_final: clave_final = api_key_final # Usar la del input si secrets falla
-                                
-                                # 2. CHIVATO (DEBUG)
-                                if not clave_final or len(clave_final) < 10:
-                                    st.error(f"❌ La clave está vacía. Revisa Secrets.")
-                                    texto_gen = "Error: Clave vacía."
-                                else:
-                                    st.caption(f"🔑 Autorizando con: {clave_final[:5]}...*****")
-                                    
-                                    # 3. ENVÍO
-                                    headers = {
-                                        "Authorization": f"Bearer {clave_final}",
-                                        "Content-Type": "application/json",
-                                        "HTTP-Referer": "https://stratintel.app",
-                                        "X-Title": "StratIntel OS"
-                                    }
-                                    data = {
-                                        "model": "deepseek/deepseek-r1:free", 
-                                        "messages": [{"role": "user", "content": prompt}]
-                                    }
-                                    response = requests.post(
-                                        "https://openrouter.ai/api/v1/chat/completions",
-                                        headers=headers, 
-                                        json=data, 
-                                        timeout=120
-                                    )
-                                    
-                                    if response.status_code == 200:
-                                        try:
-                                            texto_gen = response.json()['choices'][0]['message']['content']
-                                        except:
-                                            texto_gen = str(response.json())
-                                    else:
-                                        texto_gen = f"⚠️ Error {response.status_code}: {response.text}"
-
-                        except Exception as e:
-                            texto_gen = f"Error generando: {str(e)}"
-                        # === FIN DEL BLOQUE BLINDADO (AQUÍ ESTABA EL ERROR ANTES) ===
-
-                        # Agregar firma y contenido
-                        firma = f"\n\n> *Análisis generado vía StratIntel Solutions OS ({PROVEEDOR}) | Metodología: {tec}*"
-                        informe_final += f"\n\n## 📌 {tec}\n{texto_gen}{firma}\n\n---\n"
-                        
-                        progreso.progress((i+1)/len(tecnicas_seleccionadas))
-
-# ... (aquí venía el código del bucle que pegaste antes) ...
-
-                    # 6. GUARDADO FINAL (ESTO VA DENTRO DEL TRY PRINCIPAL)
-                    st.session_state['res'] = informe_final
-                    st.session_state['tecnicas_usadas'] = ", ".join(tecnicas_seleccionadas)
-                    st.success("✅ Misión Cumplida")
-                    st.rerun()
-
-            # 👇👇 AQUÍ ESTABA EL ERROR: FALTABA ESTE EXCEPT 👇👇
-            except Exception as e: 
-                st.error(f"Error Fatal en la Misión: {e}")
-
-# ==========================================================
-# 🏁 VISUALIZACIÓN Y DESCARGAS (ESTO VA FUERA DEL BOTÓN)
-# ==========================================================
-# Esta es la línea 1127 que te daba error. Ahora funcionará porque el try de arriba ya cerró.
-if 'res' in st.session_state and st.session_state['res']:
+# ==========================================
+# 🏁 VISUALIZACIÓN Y RESULTADOS
+# ==========================================
+if st.session_state['res']:
     st.markdown("---")
     st.markdown(st.session_state['res'])
 
-    # Mapa Visual (Solo si hay Google Key disponible)
-    if 'codigo_dot_mapa' not in st.session_state and st.session_state.get('api_key'):
+    # Mapa Relacional
+    if key_google: # Solo si tenemos key de google para el mapa
         st.markdown("---")
-        with st.spinner("🛰️ Generando Mapa de Relaciones..."):
-            grafo, err = generar_esquema_graphviz(st.session_state['res'], st.session_state['api_key'])
-            if grafo: 
-                st.session_state['codigo_dot_mapa'] = grafo.source
-                st.rerun()
-            elif err: st.warning(f"No se pudo generar mapa: {err}")
+        if st.button("🕸️ Generar Mapa de Relaciones"):
+            with st.spinner("Trazando red..."):
+                g, e = generar_grafo(st.session_state['res'], key_google)
+                if g: st.graphviz_chart(g)
+                else: st.error(f"Error mapa: {e}")
 
-    if 'codigo_dot_mapa' in st.session_state:
-        st.subheader("🕸️ Mapa de Relaciones")
-        st.graphviz_chart(st.session_state['codigo_dot_mapa'], use_container_width=True)
-
-    # Botones Descarga
-    st.markdown("### 📥 Exportar")
-    c1, c2 = st.columns(2)
-    c1.download_button("Descargar Word", crear_word(st.session_state['res'], st.session_state.get('tecnicas_usadas',''), st.session_state['origen_dato']), "Reporte.docx", use_container_width=True)
+   # Descargas
+    st.markdown("### 📥 Descargas")
+    col_d1, col_d2 = st.columns(2)
+    
+    # 1. Botón WORD (Suele ser el más estable)
     try:
-        c2.download_button("Descargar PDF", bytes(crear_pdf(st.session_state['res'], st.session_state.get('tecnicas_usadas',''), st.session_state['origen_dato'])), "Reporte.pdf", use_container_width=True)
-    except: pass
+        doc = Document()
+        doc.add_heading("StratIntel Report", 0)
+        # Limpiamos caracteres ilegales antes de meterlos al Word
+        texto_limpio = st.session_state['res'].encode('utf-8', 'ignore').decode('utf-8')
+        doc.add_paragraph(texto_limpio)
+        
+        b_word = BytesIO()
+        doc.save(b_word)
+        b_word.seek(0)
+        
+        col_d1.download_button(
+            label="📄 Descargar Word", 
+            data=b_word, 
+            file_name="Reporte_StratIntel.docx", 
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            use_container_width=True
+        )
+    except Exception as e:
+        col_d1.error(f"Error generando Word: {e}")
 
+    # 2. Botón PDF (Suele dar guerra con las tildes)
+    try:
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", size=12)
+        # FPDF no se lleva bien con UTF-8 directo, hay que convertir a Latin-1
+        texto_pdf = st.session_state['res'].encode('latin-1', 'replace').decode('latin-1')
+        pdf.multi_cell(0, 10, texto_pdf)
+        
+        # Output a string (S) y luego encode a bytes (latin-1)
+        pdf_bytes = pdf.output(dest='S').encode('latin-1')
+        
+        col_d2.download_button(
+            label="📄 Descargar PDF", 
+            data=bytes(pdf_bytes), 
+            file_name="Reporte_StratIntel.pdf", 
+            mime="application/pdf",
+            use_container_width=True
+        )
+    except Exception as e:
+        col_d2.warning(f"No se pudo generar PDF (Error de formato): {e}")
 
 
 
