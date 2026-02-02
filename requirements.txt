@@ -1,11 +1,11 @@
 streamlit
-groq
-pypdf
-python-docx
-fpdf
+google-generativeai
+openai
 graphviz
 beautifulsoup4
+python-docx
+fpdf
 requests
 langchain-community
 duckduckgo-search
-openai
+
