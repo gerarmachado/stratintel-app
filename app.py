@@ -11,35 +11,33 @@ import time
 import datetime
 from langchain_community.tools import DuckDuckGoSearchRun
 import graphviz
+import pypdf # AGREGE ESTA LIBRERÍA QUE FALTABA
 
+# --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="StratIntel Solutions OS", page_icon="♟️", layout="wide")
-# 👇👇 PEGA ESTO AQUÍ (INICIALIZACIÓN DE VARIABLES) 👇👇
-API_KEY_FIJA = ""
-MODELO_ACTUAL = "Híbrido (Gemini/DeepSeek)"
-
-# Intentamos cargar la clave si existe en los secretos
-if "GOOGLE_API_KEY" in st.secrets:
-    API_KEY_FIJA = st.secrets["GOOGLE_API_KEY"]
-# 👆👆 FIN DEL BLOQUE DE INICIALIZACIÓN 👆👆
 
 # ==========================================
-# 🔐 SISTEMA DE LOGIN (Compatible con tu código)
+# 🔐 SISTEMA DE LOGIN
 # ==========================================
 def check_password():
     """Retorna True si el usuario/contraseña son correctos."""
+    
+    # Si no hay secretos configurados en la nube, permitimos acceso (Modo Desarrollo)
+    if "passwords" not in st.secrets:
+        st.warning("⚠️ Modo Desarrollo: No se detectó configuración de [passwords] en Secrets.")
+        return True
+
     def password_entered():
-        # Verifica si el usuario existe en la sección [passwords] y si la clave coincide
         if st.session_state["username"] in st.secrets["passwords"] and \
            st.session_state["password"] == st.secrets["passwords"][st.session_state["username"]]:
             st.session_state["password_correct"] = True
-            del st.session_state["password"]  # Borra la clave de memoria por seguridad
+            del st.session_state["password"]
         else:
             st.session_state["password_correct"] = False
 
     if st.session_state.get("password_correct", False):
         return True
 
-    # Interfaz de Login
     st.markdown("## ♟️ StratIntel Solutions: Acceso Restringido")
     st.text_input("Usuario", key="username")
     st.text_input("Contraseña", type="password", on_change=password_entered, key="password")
@@ -49,21 +47,7 @@ def check_password():
     return False
 
 if not check_password():
-    st.stop() # Se detiene aquí si no hay login
-
-# ==========================================
-# ⚙️ CARGA DE CLAVES API (Desde secrets.toml)
-# ==========================================
-# Cargamos las claves en session_state para usarlas en el resto de la app
-
-if "GOOGLE_API_KEY" in st.secrets:
-    st.session_state['api_key'] = st.secrets["GOOGLE_API_KEY"] # Para Gemini
-else:
-    st.warning("⚠️ Falta GOOGLE_API_KEY en secrets.toml")
-
-# Opcional: Si quieres dejar fija la de OpenRouter también
-if "OPENROUTER_API_KEY" in st.secrets:
-    st.session_state['api_key_or'] = st.secrets["OPENROUTER_API_KEY"]
+    st.stop()  
 
 # ==========================================
 # 🧠 BASE DE DATOS MAESTRA (GRAND UNIFIED STRATEGY)
@@ -166,12 +150,13 @@ DB_CONOCIMIENTO = {
             "Autonomía de la Esfera Política: Analiza la decisión desde una lógica puramente política, ignorando consideraciones económicas o legales secundarias."
         ]
     },
-    "Hans Morgenthau (El Gran Debate: Realismo vs Legalismo)": {
-        "desc": "La lucha contra el enfoque legalista-moralista en política exterior.",
+    "Hans Morgenthau (El Otro Gran Debate: Interés Nacional)": {
+        "desc": "Detección de la disolución del Interés Nacional por presiones Supranacionales (Moralismo Global) e Infranacionales (Intereses Sectoriales).",
         "preguntas": [
-            "Prudencia vs Moral Abstracta: ¿Se está juzgando la acción política por sus consecuencias políticas (Prudencia) o por principios morales abstractos que llevarán al desastre?",
-            "Interés Nacional Objetivo: ¿El líder está actuando para salvar la nación o para satisfacer una ideología personal?",
-            "La Autonomía de lo Político: ¿Se está permitiendo que abogados o economistas dicten decisiones que deberían ser puramente estratégicas?"
+            "Desviación Supranacional (Utopismo): ¿Se está sacrificando la seguridad vital del Estado en nombre de 'principios morales universales', derecho internacional abstracto u organismos globales que no garantizan reciprocidad?",
+            "Secuestro Infranacional (Captura del Estado): ¿La política exterior está siendo dictada por grupos subnacionales (lobbies corporativos, minorías étnicas, facciones ideológicas) que disfrazan su beneficio particular como 'Interés Nacional'?",
+            "La Falacia Legalista: ¿Se está intentando resolver un problema político de poder mediante fórmulas legales o tratados que el adversario no respetará?",
+            "Racionalidad vs Sentimentalismo: ¿La decisión es el resultado de un cálculo racional de poder o una respuesta emocional para satisfacer a la opinión pública doméstica?"
         ]
     },
     "Kenneth Waltz (Neorrealismo / Imágenes)": {
@@ -788,7 +773,7 @@ StratIntel es un Sistema de Soporte a la Decisión (DSS) que utiliza IA para apl
 * **Triangulación (Cross-Check):** Técnica forense. Compara documentos para hallar contradicciones, silencios y cambios de narrativa.
 
 ---
-*Documentación Oficial del Sistema StratIntel Solutions | Uso Confidencial*
+*Documentación Oficial del Sistema StratIntel Solutions | Uso Reservado*
 """
 
 # --- GESTIÓN DE ESTADO ---
@@ -833,46 +818,51 @@ def obtener_texto_web(url):
     except Exception as e: return f"Error: {e}"
    
 def generar_esquema_graphviz(texto_analisis, api_key):
-    """Genera código DOT usando Groq."""
+    """Genera código DOT con código de colores semántico y TÍTULO dinámico."""
     try:
-        client = Groq(api_key=api_key) # Cliente Groq
+        if not api_key: return None, "Falta API Key de Google para visualización."
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-2.5-flash")
         
         prompt = f"""
-        ACTÚA COMO: Experto en Visualización de Datos de Inteligencia.
-        OBJETIVO: Convertir el siguiente análisis textual en un DIAGRAMA DE RED (DOT Graphviz).
+        ACTÚA COMO: Experto en Visualización de Inteligencia (Link Analysis).
+        OBJETIVO: Generar un GRAFO (DOT Graphviz) que resuma las relaciones clave y tenga un TÍTULO DESCRIPTIVO.
         
-        INSTRUCCIONES:
-        1. Identifica: Actores clave y sus relaciones.
-        2. Genera SOLO el código DOT. Sin markdown (```), sin explicaciones.
+        REGLAS DE COLOR OBLIGATORIAS:
+        1. 🟧 ACTORES (Países, Líderes, Organizaciones): fillcolor="#ffcc99" (Naranja)
+        2. 🟥 AMENAZAS (Conflictos, Riesgos, Crisis, Ataques): fillcolor="#ffcccc" (Rojo Claro)
+        3. 🟦 CONCEPTOS (Teorías, Doctrinas, Economía, Recursos, Intereses): fillcolor="#ccddff" (Azul Claro)
         
-        ESTILO:
+        INSTRUCCIONES TÉCNICAS:
+        1. Analiza el texto e identifica las entidades y relaciones más críticas.
+        2. Genera un TÍTULO CORTO y conciso (máximo 8 palabras) que resuma el tema principal del análisis.
+        3. Inserta el título al inicio del grafo usando el atributo 'label'.
+        4. Genera SOLO el código DOT válido. Sin markdown.
+        
+        EJEMPLO DE ESTRUCTURA ESPERADA:
         digraph G {{
-            rankdir=LR; 
-            node [shape=box, style="filled,rounded", color="#1f2937", fillcolor="#f3f4f6", fontname="Helvetica", fontsize=10]; 
-            edge [fontname="Helvetica", fontsize=8, color="#4b5563"];
+            # --- CONFIGURACIÓN DEL TÍTULO ---
+            graph [label="TÍTULO GENERADO POR LA IA AQUÍ", labelloc=t, fontsize=16, fontname="Arial Bold", fontcolor="#333333"];
+            rankdir=LR;
+            node [style=filled, fontname="Arial", shape=box];
+            edge [fontname="Arial", fontsize=10];
+            
+            # --- NODOS Y RELACIONES ---
+            "EEUU" [fillcolor="#ffcc99", label="Actor: EEUU"];
+            "Guerra Híbrida" [fillcolor="#ffcccc", label="Amenaza: Guerra Híbrida"];
+            "Realismo Ofensivo" [fillcolor="#ccddff", label="Concepto: Realismo Ofensivo"];
+            "EEUU" -> "Guerra Híbrida" [label="enfrenta riesgo de"];
+            "Guerra Híbrida" -> "Realismo Ofensivo" [label="analizada vía"];
         }}
         
-        TEXTO BASE:
+        TEXTO A ANALIZAR:
         {texto_analisis[:15000]}
         """
         
-        # Llamada a Groq
-        chat_completion = client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": "Eres un generador de código Graphviz DOT estricto."},
-                {"role": "user", "content": prompt}
-            ],
-            model="llama3-70b-8192", # Usamos el modelo grande para mejor lógica visual
-            temperature=0.1, # Creatividad baja para no romper el código
-        )
-        
-        # Limpieza
-        codigo_dot = chat_completion.choices[0].message.content
-        codigo_dot = codigo_dot.replace("```dot", "").replace("```", "").replace("DOT", "").strip()
-        
+       res = model.generate_content(prompt)
+        codigo_dot = res.text.replace("```dot", "").replace("```", "").replace("DOT", "").strip()
         grafico = graphviz.Source(codigo_dot)
         return grafico, None
-        
     except Exception as e:
         return None, f"Error visual: {e}"
 
@@ -891,7 +881,7 @@ class PDFReport(FPDF):
     def footer(self):
         self.set_y(-15)
         self.set_font('Arial', 'I', 7)
-        self.cell(0, 10, 'Generado por IA. Uso Confidencial.', 0, 0, 'C')
+        self.cell(0, 10, 'Generado por IA. Uso Reservado.', 0, 0, 'C')
 
 def crear_pdf(texto, tecnicas, fuente):
     pdf = PDFReport()
@@ -911,42 +901,36 @@ def crear_word(texto, tecnicas, fuente):
     for l in texto.split('\n'):
         if l.startswith('#'): doc.add_heading(l.replace('#','').strip(), level=2)
         else: doc.add_paragraph(l)
-    
     aviso = doc.add_paragraph()
-    aviso.add_run("\n\n------------------\nAVISO: Generado por IA. Verificar datos.").font.size = 8
+    aviso.add_run("\n\n------------------\nAVISO: Generado por IA.").font.size = 8
     b = BytesIO(); doc.save(b); b.seek(0)
     return b
 
-# --- INTERFAZ ---
-st.sidebar.title("♟️ StratIntel Solutions")
-st.sidebar.caption("Master Edition | Ops Mode")
+# ==========================================
+# 🖥️ INTERFAZ PRINCIPAL
+# ==========================================
+st.sidebar.title("♟️ StratIntel OS")
+st.sidebar.caption("v2.0 | Hybrid Engine")
 st.sidebar.markdown("---")
 
-if API_KEY_FIJA:
-    st.session_state['api_key'] = API_KEY_FIJA
-    genai.configure(api_key=API_KEY_FIJA)
-    st.sidebar.success(f"✅ Conectado ({MODELO_ACTUAL})")
-else:
-    if not st.session_state['api_key']:
-        k = st.sidebar.text_input("🔑 API KEY:", type="password")
-        if k: st.session_state['api_key'] = k; genai.configure(api_key=k); st.rerun()
+# CARGA SEGURA DE CLAVES (Sin crashear si faltan)
+google_key_auto = st.secrets.get("GOOGLE_API_KEY", "")
+router_key_auto = st.secrets.get("OPENROUTER_API_KEY", "")
 
-# SELECTOR MULTI-TECNICA
+# SELECTOR DE MISION
 st.sidebar.subheader("🎯 Misión")
 tecnicas_seleccionadas = st.sidebar.multiselect(
     "Técnicas (Máx 3):",
     options=list(DB_CONOCIMIENTO.keys()),
     max_selections=3
 )
-
 temp = st.sidebar.slider("Creatividad", 0.0, 1.0, 0.4)
 if st.sidebar.button("🔒 Salir"): del st.session_state["password_correct"]; st.rerun()
 
 st.title("♟️ StratIntel Solutions | División de Análisis")
-st.markdown("**Sistema de Inteligencia Estratégica (DSS)**")
 
-# CARGA
-t1, t2, t3, t4, t_ayuda = st.tabs(["📂 PDFs", "📝 DOCXs", "🌐 Web", "✍️ Manual", "ℹ️ Ayuda"])
+# PESTAÑAS DE CARGA
+t1, t2, t3, t4 = st.tabs(["📂 PDFs", "📝 DOCXs", "🌐 Web", "✍️ Manual"])
 with t1:
     f = st.file_uploader("PDFs", type="pdf", accept_multiple_files=True)
     if f and st.button("Procesar PDF"):
@@ -956,252 +940,175 @@ with t2:
     if f and st.button("Procesar DOCX"):
         t, n = procesar_archivos_docx(f); st.session_state['texto_analisis']=t; st.session_state['origen_dato']=f"DOCXs: {n}"; st.success(f"✅ {len(f)}")
 with t3:
-    u = st.text_input("URL"); 
+    u = st.text_input("URL")
     if st.button("Web"): st.session_state['texto_analisis']=obtener_texto_web(u); st.session_state['origen_dato']=f"Web: {u}"; st.success("OK")
 with t4:
-    m = st.text_area("Manual")
-    if st.button("Fijar"): st.session_state['texto_analisis']=m; st.session_state['origen_dato']="Manual"; st.success("OK")
-
-with t_ayuda:
-    st.markdown(MANUAL_USUARIO)
-    
-    # Botón para descargar el Manual en PDF (Generado al vuelo)
-    st.markdown("---")
-    if st.button("💾 Descargar Manual en PDF"):
-        # Usamos tu misma función de crear_pdf
-        pdf_bytes = crear_pdf(MANUAL_USUARIO, "Documentación Oficial", "Sistema StratIntel")
-        st.download_button(
-            label="Confirmar Descarga",
-            data=bytes(pdf_bytes),
-            file_name="Manual_Operaciones_StratIntel.pdf",
-            mime="application/pdf")
+    m = st.text_area("Texto Manual")
+    if st.button("Fijar Texto"): st.session_state['texto_analisis']=m; st.session_state['origen_dato']="Manual"; st.success("OK")
 
 st.markdown("---")
 if st.session_state['texto_analisis']:
     with st.expander(f"Fuente Activa: {st.session_state['origen_dato']}"): st.write(st.session_state['texto_analisis'][:1000])
 
 # ==========================================
-# 🚀 EJECUCIÓN DE MISIÓN
+# 🚀 EJECUCIÓN HÍBRIDA (EL CEREBRO)
 # ==========================================
 st.header("Generación de Informe")
 
-if not st.session_state['api_key'] or not st.session_state['texto_analisis']:
+if not st.session_state['texto_analisis']:
     st.warning("⚠️ Carga datos para comenzar.")
 else:
     c1, c2 = st.columns([1, 2])
     with c1:
         if not tecnicas_seleccionadas: st.info("👈 Selecciona técnicas.")
         
-        # --- SELECTOR DE PROFUNDIDAD ---
         profundidad = st.radio(
-            "Nivel de Profundidad:", 
-            ["🔍 Estratégico (Resumen)", "🎯 Táctico (Todas las preguntas)", "⚙️ Operacional (Selección Específica)"],
-            help="Estratégico: Visión general. Táctico: Todas las preguntas del marco. Operacional: Selecciona preguntas manualmente."
+            "Profundidad:", 
+            ["🔍 Estratégico", "🎯 Táctico", "⚙️ Operacional"],
+            help="Estratégico: Resumen. Táctico: Completo. Operacional: Manual."
         )
         
-        # --- LÓGICA DE SELECCIÓN MANUAL (OPERACIONAL) ---
+        # Selección Manual
         preguntas_manuales = {}
         if "Operacional" in profundidad and tecnicas_seleccionadas:
-            st.info("👇 Selecciona los vectores de análisis:")
             for tec in tecnicas_seleccionadas:
                 qs = DB_CONOCIMIENTO.get(tec, {}).get("preguntas", [])
                 if qs:
-                    sel = st.multiselect(f"Preguntas para {tec}:", qs)
+                    sel = st.multiselect(f"Q: {tec}:", qs)
                     preguntas_manuales[tec] = sel
-                else:
-                    st.warning(f"{tec} no tiene preguntas predefinidas.")
         
         usar_internet = st.checkbox("🌐 Búsqueda Web")
-        pir = st.text_area("PIR (Opcional):", height=100)
+        pir = st.text_area("PIR (Opcional):", height=80)
 
     with c2:
-        # --- NUEVO: SELECTOR DE MOTOR (El Interruptor) ---
+        # --- SELECTOR DE MOTOR ---
         st.markdown("### 🧠 Motor de IA")
-        col_motor_1, col_motor_2 = st.columns(2)
-        with col_motor_1:
-             PROVEEDOR = st.radio("Proveedor:", ["Google Gemini (Rápido)", "DeepSeek R1 (OpenRouter)"], label_visibility="collapsed")
-        with col_motor_2:
-             api_key_or = ""
-             if "DeepSeek" in PROVEEDOR:
-                 api_key_or = st.text_input("🔑 Key OpenRouter:", type="password", key="key_or_input", help="Consíguela gratis en openrouter.ai")
+        col_m1, col_m2 = st.columns(2)
+        with col_m1:
+            PROVEEDOR = st.radio("Proveedor:", ["Google Gemini", "DeepSeek (OpenRouter)"], label_visibility="collapsed")
+        with col_m2:
+            # Lógica de Claves Inteligente
+            api_key_final = ""
+            if "Google" in PROVEEDOR:
+                if google_key_auto:
+                    st.success("🔑 Google Key Detectada")
+                    api_key_final = google_key_auto
+                else:
+                    api_key_final = st.text_input("🔑 Pega tu Google Key:", type="password")
+            else:
+                if router_key_auto:
+                    st.success("🔑 OpenRouter Key Detectada")
+                    api_key_final = router_key_auto
+                else:
+                    api_key_final = st.text_input("🔑 Pega OpenRouter Key:", type="password")
 
-        # BOTÓN PRINCIPAL
+        # BOTÓN EJECUTAR
         if st.button("🚀 EJECUTAR MISIÓN", type="primary", use_container_width=True, disabled=len(tecnicas_seleccionadas)==0):
-            try:
-                # 1. LIMPIEZA
-                if 'codigo_dot_mapa' in st.session_state: del st.session_state['codigo_dot_mapa']
-                if 'res' in st.session_state: del st.session_state['res']
-
-                # 2. CONFIGURACIÓN INICIAL (GOOGLE)
-                # Configuramos Google Gemini por defecto (necesario para el mapa visual o si se elige como motor)
-                genai.configure(api_key=st.session_state['api_key'])
-                model_gemini = genai.GenerativeModel("gemini-2.5-flash")
-
-                ctx = st.session_state['texto_analisis']
-
-                INSTRUCCIONES_ESTILO = """
-                DIRECTRICES DE FORMATO Y ESTRUCTURA (CRÍTICO):
-                1. EXTENSIÓN: Usa el máximo espacio disponible pero PRIORIZA LA FINALIZACIÓN.
-                2. ESTRUCTURA VISUAL: Usa Títulos (##), Negritas y Viñetas.
-                3. ENFOQUE: Análisis denso y directo (BLUF).
-                4. RIGOR: Cita fuentes y mantén un tono de inteligencia militar.
-                """
-                
-                # 3. BÚSQUEDA WEB
-                contexto_web = ""
-                if usar_internet:
-                    with st.status("🌐 Buscando...", expanded=True) as s:
-                        q = f"{pir} {st.session_state['origen_dato']}" if pir else f"Análisis {st.session_state['origen_dato']}"
-                        res_web = buscar_en_web(q)
-                        contexto_web = f"\nINFO WEB:\n{res_web}\n"
-                        s.update(label="✅ Hecho", state="complete", expanded=False)
-                
-                # 4. INICIALIZACIÓN INFORME
-                informe_final = f"# INFORME\nFECHA: {datetime.datetime.now().strftime('%d/%m/%Y')}\nFUENTE: {st.session_state['origen_dato']}\nMOTOR: {PROVEEDOR}\n\n"
-                progreso = st.progress(0)
-                                
-                # 5. BUCLE DE ANÁLISIS
-                for i, tec in enumerate(tecnicas_seleccionadas):
-                    st.caption(f"Analizando: {tec}...")
+            if not api_key_final:
+                st.error("❌ Falta la API Key para el motor seleccionado.")
+            else:
+                try:
+                    # Limpieza
+                    if 'codigo_dot_mapa' in st.session_state: del st.session_state['codigo_dot_mapa']
+                    if 'res' in st.session_state: del st.session_state['res']
                     
-                    # Lógica de Preguntas
-                    instruccion_preguntas = ""
-                    if "Táctico" in profundidad:
-                        qs = DB_CONOCIMIENTO.get(tec, {}).get("preguntas", [])
-                        lista = "\n".join([f"- {p}" for p in qs]) if qs else ""
-                        instruccion_preguntas = f"\nOBLIGATORIO: Responde:\n{lista}" if qs else "\nAnálisis táctico detallado."
-                    elif "Operacional" in profundidad:
-                        qs_selec = preguntas_manuales.get(tec, [])
-                        lista = "\n".join([f"- {p}" for p in qs_selec]) if qs_selec else ""
-                        instruccion_preguntas = f"\nOBLIGATORIO: Responde SOLO:\n{lista}" if qs_selec else "\nAnálisis general."
-                    else:
-                        instruccion_preguntas = "\nAnálisis estratégico ejecutivo."
+                    # Guardamos la key de Google en sesión SIEMPRE, porque se usa para el mapa visual
+                    if "Google" in PROVEEDOR: st.session_state['api_key'] = api_key_final
+                    elif google_key_auto: st.session_state['api_key'] = google_key_auto
 
-                    prompt = f"""
-                    ACTÚA COMO: Analista de Inteligencia Senior y Experto en relaciones internacionales.
-                    METODOLOGÍA: {tec}
-                    PIR: {pir}
-                    {INSTRUCCIONES_ESTILO}
-                    {instruccion_preguntas}
+                    # Configura Gemini por si acaso (para mapas)
+                    if st.session_state.get('api_key'):
+                        genai.configure(api_key=st.session_state['api_key'])
+
+                    ctx = st.session_state['texto_analisis']
                     
-                    CONTEXTO:
-                    {ctx[:60000]} 
-                    {contexto_web}
-                    """
-                    
-                    texto_generado = ""
-                    
-                    try:
-                        # === 🧠 INTERRUPTOR DE MOTORES ===
-                        if "Google Gemini" in PROVEEDOR:
-                             # Lógica Gemini
-                             config_generacion = genai.types.GenerationConfig(temperature=temp, max_output_tokens=8192)
-                             res = model_gemini.generate_content(prompt, generation_config=config_generacion)
-                             texto_generado = res.text
+                    # Búsqueda Web
+                    contexto_web = ""
+                    if usar_internet:
+                        with st.status("🌐 Buscando...", expanded=True) as s:
+                            q = f"{pir} {st.session_state['origen_dato']}"
+                            res_web = buscar_en_web(q)
+                            contexto_web = f"\nINFO WEB:\n{res_web}\n"
+                            s.update(label="✅ Hecho", state="complete", expanded=False)
+
+                    informe_final = f"# INFORME\nFECHA: {datetime.datetime.now().strftime('%d/%m/%Y')}\nFUENTE: {st.session_state['origen_dato']}\nMOTOR: {PROVEEDOR}\n\n"
+                    progreso = st.progress(0)
+
+                    # BUCLE PRINCIPAL
+                    for i, tec in enumerate(tecnicas_seleccionadas):
                         
-                        elif "DeepSeek" in PROVEEDOR:
-                             # Lógica OpenRouter (DeepSeek R1)
-                             if not api_key_or:
-                                 st.error("⚠️ Falta API Key de OpenRouter")
-                                 break
-                             
-                             client = OpenAI(
-                                 base_url="https://openrouter.ai/api/v1",
-                                 api_key=api_key_or,
-                             )
-                             
-                             completion = client.chat.completions.create(
-                                extra_headers={
-                                    "HTTP-Referer": "https://stratintel.app",
-                                    "X-Title": "StratIntel",
-                                },
-                                model="deepseek/deepseek-r1:free", # MODELO GRATUITO
-                                messages=[
-                                    {"role": "system", "content": "Eres un oficial de inteligencia estratégica y experto en relaciones internacionales."},
-                                    {"role": "user", "content": prompt}
-                                ]
-                             )
-                             texto_generado = completion.choices[0].message.content
+                        # Lógica de Prompt
+                        instruccion = "Análisis Estratégico Ejecutivo."
+                        if "Táctico" in profundidad:
+                            qs = DB_CONOCIMIENTO.get(tec, {}).get("preguntas", [])
+                            if qs: instruccion = "Responde:\n" + "\n".join([f"- {p}" for p in qs])
+                        elif "Operacional" in profundidad:
+                            qs = preguntas_manuales.get(tec, [])
+                            if qs: instruccion = "Responde SOLO:\n" + "\n".join([f"- {p}" for p in qs])
 
-                        # Agregar firma y contenido
-                        firma_sistema = f"\n\n> *Análisis generado vía StratIntel SOLUTIONS OS ({PROVEEDOR}) | Metodología: {tec}*"
-                        informe_final += f"\n\n## 📌 {tec}\n{texto_generado}{firma_sistema}\n\n---\n"
-                        
-                    except Exception as e:
-                        st.error(f"Error en {tec}: {e}")
-                        break
+                        prompt = f"""
+                        ACTÚA COMO: Analista de Inteligencia Estratégica y Experto en Relaciones Internacionales. METODOLOGÍA: {tec}. PIR: {pir}
+                        DIRECTRICES: Formato académico, BLUF, citar fuentes.
+                        {instruccion}
+                        CONTEXTO: {ctx[:60000]} {contexto_web}
+                        """
 
-                    progreso.progress((i + 1) / len(tecnicas_seleccionadas))
-                    time.sleep(0.5) 
+                        texto_gen = ""
+                        try:
+                            if "Google" in PROVEEDOR:
+                                model = genai.GenerativeModel("gemini-2.5-flash")
+                                res = model.generate_content(prompt)
+                                texto_gen = res.text
+                            else:
+                                client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key_final)
+                                completion = client.chat.completions.create(
+                                    model="deepseek/deepseek-r1:free",
+                                    messages=[{"role": "user", "content": prompt}]
+                                )
+                                texto_gen = completion.choices[0].message.content
+                        except Exception as e:
+                            texto_gen = f"Error generando: {e}"
 
-                # 6. GUARDADO
-                st.session_state['res'] = informe_final
-                st.session_state['tecnicas_usadas'] = ", ".join(tecnicas_seleccionadas)
-                st.success("✅ Misión Cumplida")
-                st.rerun()
+                        firma = f"\n\n> *Análisis generado vía StratIntel Solutions OS ({PROVEEDOR}) | Metodología: {tec}*"
+                        informe_final += f"\n\n## 📌 {tec}\n{texto_gen}{firma}\n\n---\n"
+                        progreso.progress((i+1)/len(tecnicas_seleccionadas))
+                    
+                    st.session_state['res'] = informe_final
+                    st.session_state['tecnicas_usadas'] = ", ".join(tecnicas_seleccionadas)
+                    st.success("✅ Misión Cumplida")
+                    st.rerun()
 
-            except Exception as e: st.error(f"Error Fatal: {e}")
-                
+                except Exception as e: st.error(f"Error Fatal: {e}")
+
 # ==========================================================
-# 🏁 BLOQUE PERSISTENTE (VISUALIZACIÓN Y DESCARGAS)
+# 🏁 VISUALIZACIÓN Y DESCARGAS
 # ==========================================================
 if 'res' in st.session_state and st.session_state['res']:
-    
-    # 1. MOSTRAR EL INFORME DE TEXTO
     st.markdown("---")
     st.markdown(st.session_state['res'])
-    
-    # 2. GENERACIÓN DEL GRÁFICO (Solo si no existe en memoria)
-    if 'codigo_dot_mapa' not in st.session_state:
+
+    # Mapa Visual (Solo si hay Google Key disponible)
+    if 'codigo_dot_mapa' not in st.session_state and st.session_state.get('api_key'):
         st.markdown("---")
-        st.subheader("🕸️ Mapa de Relaciones (Visualización)")
-        with st.spinner("🛰️ Trazando red de actores y conflictos..."):
-            # Llamamos a la función de grafo (Asegúrate de que la función use el modelo correcto internamente)
-            grafo, error = generar_esquema_graphviz(st.session_state['res'], st.session_state['api_key'])
-            if grafo:
-                st.session_state['codigo_dot_mapa'] = grafo.source 
-                st.rerun() # Recargamos para mostrar el gráfico ya guardado
-            elif error:
-                st.error(f"Error generando mapa: {error}")
+        with st.spinner("🛰️ Generando Mapa de Relaciones..."):
+            grafo, err = generar_esquema_graphviz(st.session_state['res'], st.session_state['api_key'])
+            if grafo: 
+                st.session_state['codigo_dot_mapa'] = grafo.source
+                st.rerun()
+            elif err: st.warning(f"No se pudo generar mapa: {err}")
 
-    # 3. VISUALIZACIÓN Y DESCARGA (Usando la memoria)
     if 'codigo_dot_mapa' in st.session_state:
-        try:
-            # Reconstruimos el gráfico desde la memoria
-            grafo_final = graphviz.Source(st.session_state['codigo_dot_mapa'])
-            
-            st.markdown("---")
-            st.subheader("🕸️ Mapa de Relaciones")
-            st.graphviz_chart(grafo_final, use_container_width=True)
-            
-            # --- ZONA DE DESCARGA ---
-            st.markdown("### 📥 Exportar Mapa")
-            c_d1, c_d2 = st.columns(2)
-            
-            # Renderizar a bytes
-            try:
-                img_png = grafo_final.pipe(format='png')
-                with c_d1:
-                    st.download_button("💾 Descargar PNG", img_png, "stratintel_map.png", "image/png", use_container_width=True)
-            except: c_d1.warning("⚠️ Instala Graphviz para PNG")
+        st.subheader("🕸️ Mapa de Relaciones")
+        st.graphviz_chart(st.session_state['codigo_dot_mapa'], use_container_width=True)
 
-            try:
-                pdf_bytes = grafo_final.pipe(format='pdf')
-                with c_d2:
-                    st.download_button("📄 Descargar PDF", pdf_bytes, "stratintel_map.pdf", "application/pdf", use_container_width=True)
-            except: pass
-
-        except Exception as e:
-            st.warning(f"Error visual: {e}")
-
-    # 4. BOTONES DEL INFORME DE TEXTO
-    st.markdown("---")
-    st.markdown("### 📥 Exportar Informe Escrito")
+    # Botones Descarga
+    st.markdown("### 📥 Exportar")
     c1, c2 = st.columns(2)
-    c1.download_button("Descargar Word", crear_word(st.session_state['res'], st.session_state.get('tecnicas_usadas','Varios'), st.session_state['origen_dato']), "Reporte.docx", use_container_width=True)
-    try: 
-        c2.download_button("Descargar PDF", bytes(crear_pdf(st.session_state['res'], st.session_state.get('tecnicas_usadas','Varios'), st.session_state['origen_dato'])), "Reporte.pdf", use_container_width=True)
+    c1.download_button("Descargar Word", crear_word(st.session_state['res'], st.session_state.get('tecnicas_usadas',''), st.session_state['origen_dato']), "Reporte.docx", use_container_width=True)
+    try:
+        c2.download_button("Descargar PDF", bytes(crear_pdf(st.session_state['res'], st.session_state.get('tecnicas_usadas',''), st.session_state['origen_dato'])), "Reporte.pdf", use_container_width=True)
     except: pass
+
 
 
 
