@@ -1121,9 +1121,22 @@ else:
                         
                         progreso.progress((i+1)/len(tecnicas_seleccionadas))
 
+# ... (aquí venía el código del bucle que pegaste antes) ...
+
+                    # 6. GUARDADO FINAL (ESTO VA DENTRO DEL TRY PRINCIPAL)
+                    st.session_state['res'] = informe_final
+                    st.session_state['tecnicas_usadas'] = ", ".join(tecnicas_seleccionadas)
+                    st.success("✅ Misión Cumplida")
+                    st.rerun()
+
+            # 👇👇 AQUÍ ESTABA EL ERROR: FALTABA ESTE EXCEPT 👇👇
+            except Exception as e: 
+                st.error(f"Error Fatal en la Misión: {e}")
+
 # ==========================================================
-# 🏁 VISUALIZACIÓN Y DESCARGAS
+# 🏁 VISUALIZACIÓN Y DESCARGAS (ESTO VA FUERA DEL BOTÓN)
 # ==========================================================
+# Esta es la línea 1127 que te daba error. Ahora funcionará porque el try de arriba ya cerró.
 if 'res' in st.session_state and st.session_state['res']:
     st.markdown("---")
     st.markdown(st.session_state['res'])
@@ -1149,12 +1162,6 @@ if 'res' in st.session_state and st.session_state['res']:
     try:
         c2.download_button("Descargar PDF", bytes(crear_pdf(st.session_state['res'], st.session_state.get('tecnicas_usadas',''), st.session_state['origen_dato'])), "Reporte.pdf", use_container_width=True)
     except: pass
-
-
-
-
-
-
 
 
 
